@@ -29,7 +29,7 @@ Browser options:
   --xvfb <path>          Start this Xvfb as a private, authenticated display for the browser
   --headless             Run headless (easier to detect; for tests and quick checks)
   --concurrency <n>      Maximum simultaneous tabs (default 2)
-  --chrome-arg <arg>     Extra browser argument (repeatable)
+  --chrome-arg=<arg>     Extra browser argument, repeatable; use the = form (--chrome-arg=--no-sandbox)
 
 Without --headless the browser needs a display: pass --xvfb on a machine without one.
 `;

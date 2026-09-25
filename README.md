@@ -41,7 +41,7 @@ The browser runs headful by default. On a server without a display, pass `--xvfb
 | `--xvfb <path>`         | none; run the browser on its own Xvfb display                                                      |
 | `--proxy <url>`         | none                                                                                               |
 | `--concurrency <n>`     | `2` tabs                                                                                           |
-| `--chrome-arg <arg>`    | extra browser argument, repeatable                                                                 |
+| `--chrome-arg=<arg>`    | extra browser argument, repeatable; the `=` form is required for values starting with `-`          |
 
 The browser only loads the pages it is asked for: background networking, component updates, sync and pings are off.
 

@@ -20,7 +20,7 @@ const cli = resolve(import.meta.dirname, '..', 'dist', 'cli.js');
 const chromeArgs = (process.env.SEARCHCAST_TEST_CHROME_ARGS ?? '')
 	.split(' ')
 	.filter(Boolean)
-	.flatMap((a) => ['--chrome-arg', a]);
+	.map((a) => `--chrome-arg=${a}`);
 
 function onPath(name: string): string | undefined {
 	const found = spawnSync('sh', ['-c', `command -v ${name}`], {
