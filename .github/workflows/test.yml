@@ -1,0 +1,41 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format and build
+        run: pnpm format:check && pnpm build
+
+      # The browser tests drive the runner's preinstalled Google Chrome against
+      # a local fixture site. --no-sandbox because Ubuntu's AppArmor policy
+      # blocks the unprivileged user namespaces Chrome's sandbox wants; the
+      # runner is disposable and the browser only ever loads the fixture.
+      - name: Test
+        run: pnpm test
+        env:
+          SEARCHCAST_CHROME: /usr/bin/google-chrome
+          SEARCHCAST_TEST_CHROME_ARGS: --no-sandbox

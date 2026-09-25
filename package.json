@@ -1,0 +1,64 @@
+{
+	"name": "searchcast",
+	"version": "0.0.0",
+	"description": "Turn a web search form into a JSON API by driving a real browser. Sites are described by small JSON recipes: where to type, how to submit, which elements are results.",
+	"license": "AGPL-3.0-only",
+	"keywords": [
+		"browser",
+		"chromium",
+		"cdp",
+		"search",
+		"scraping",
+		"json",
+		"self-hosted"
+	],
+	"author": "wighawag",
+	"homepage": "https://github.com/wighawag/searchcast#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wighawag/searchcast.git"
+	},
+	"bugs": {
+		"url": "https://github.com/wighawag/searchcast/issues"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"packageManager": "pnpm@10.28.1",
+	"engines": {
+		"node": ">=22"
+	},
+	"bin": {
+		"searchcast": "./dist/cli.js"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"src",
+		"integrations/searxng/searchcast.py"
+	],
+	"devDependencies": {
+		"@changesets/cli": "^2.31.1",
+		"@types/node": "^25.2.0",
+		"prettier": "^3.8.4",
+		"typescript": "^5.3.3",
+		"vitest": "^4.0.18"
+	},
+	"scripts": {
+		"build": "tsc",
+		"test": "tsc && vitest run",
+		"test:watch": "vitest",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"changeset:check": "changeset status --since=main",
+		"prepublishOnly": "pnpm format:check && pnpm build",
+		"release": "pnpm prepublishOnly && git push --all && pnpm changeset publish && git push --tags",
+		"release:ci": "pnpm prepublishOnly && pnpm changeset publish"
+	}
+}
