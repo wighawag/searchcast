@@ -1,5 +1,11 @@
 # searchcast
 
+## 0.1.1
+
+### Patch Changes
+
+- bce0a63: Talk to the browser over `--remote-debugging-pipe` instead of a loopback TCP DevTools port. searchcast now works for a user that cannot use loopback TCP (it failed to start in a Tor-forced account), and no other process on the machine can reach the browser it drives through an open debugging port.
+
 ## 0.1.0
 
 ### Minor Changes

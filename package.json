@@ -1,6 +1,6 @@
 {
 	"name": "searchcast",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Turn a web search form into a JSON API by driving a real browser. Sites are described by small JSON recipes: where to type, how to submit, which elements are results.",
 	"license": "AGPL-3.0-only",
 	"keywords": [
