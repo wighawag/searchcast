@@ -30,6 +30,13 @@ function onPath(name: string): string | undefined {
 }
 const xvfb = process.env.SEARCHCAST_TEST_XVFB ?? onPath('Xvfb');
 const socketActivate = onPath('systemd-socket-activate');
+// Can we make a network namespace with no usable loopback, as our own uid?
+const unshare = onPath('unshare');
+const noLoopback =
+	unshare &&
+	spawnSync(unshare, ['-Un', '--map-current-user', 'true']).status === 0
+		? unshare
+		: undefined;
 // A python that can `import searx` (e.g. PYTHONPATH pointing at a SearXNG install).
 const searxPython = process.env.SEARCHCAST_TEST_SEARXNG_PYTHON;
 
@@ -189,6 +196,67 @@ describe.skipIf(!chrome)('the CLI', () => {
 		expect(profiles()).toEqual([]);
 		expect(existsSync(socketPath)).toBe(false);
 	}, 60_000);
+
+	// The regression that took searchcast down in a Tor-forced account: it used
+	// to reach the browser over a loopback TCP DevTools port, which such an
+	// account cannot use. A fresh network namespace has loopback down, so any
+	// loopback TCP fails here just as it does there.
+	it.skipIf(!noLoopback)(
+		'needs no loopback networking (DevTools over a pipe, not a port)',
+		async () => {
+			const dir = mkdtempSync(join(work, 'noloop-'));
+			writeFileSync(
+				join(dir, 'page.html'),
+				`<!doctype html><div id="app"></div><script>
+				const q = new URLSearchParams(location.search).get('q');
+				setTimeout(() => { document.getElementById('app').innerHTML =
+					'<article class="r"><h2><a class="t" href="https://example.test/1">' + q + ' result 1</a></h2></article>'; }, 100);
+				</script>`,
+			);
+			const recipe = join(dir, 'local.json');
+			writeFileSync(
+				recipe,
+				JSON.stringify({
+					navigate: {url: `file://${dir}/page.html?q={query}`},
+					ready: 'article.r a.t',
+					results: {
+						item: 'article.r',
+						fields: {
+							title: {selector: 'h2'},
+							url: {selector: 'a.t', attr: 'href'},
+						},
+					},
+				}),
+			);
+			const child = spawn(
+				noLoopback!,
+				[
+					'-Un',
+					'--map-current-user',
+					process.execPath,
+					cli,
+					'query',
+					'--recipe',
+					recipe,
+					'--chrome',
+					chrome!,
+					...chromeArgs,
+					'--headless',
+					'--ephemeral',
+					'offline',
+				],
+				{stdio: ['ignore', 'pipe', 'pipe']},
+			);
+			children.push(child);
+			let stdout = '';
+			let stderr = '';
+			child.stdout!.on('data', (c) => (stdout += c));
+			child.stderr!.on('data', (c) => (stderr += c));
+			expect(await exitCode(child, 30_000), stderr).toBe(0);
+			expect(JSON.parse(stdout).results[0].title).toBe('offline result 1');
+		},
+		40_000,
+	);
 
 	it('refuses --listen systemd without a socket from systemd', async () => {
 		const child = serve(['--headless', '--ephemeral', '--listen', 'systemd']);

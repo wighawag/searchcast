@@ -1,6 +1,12 @@
 /**
- * A minimal Chrome DevTools Protocol client over Node's built-in WebSocket.
- * One browser-level connection; pages are driven through flattened sessions.
+ * A minimal Chrome DevTools Protocol client. One browser-level connection;
+ * pages are driven through flattened sessions.
+ *
+ * Two transports:
+ * - a PIPE pair (`--remote-debugging-pipe`), which is what searchcast uses for
+ *   the browser it launches: no port, so nothing else on the machine can reach
+ *   the browser, and it works where loopback TCP does not;
+ * - a WebSocket URL, for attaching to a browser something else started.
  */
 
 type Handler = (params: any, sessionId?: string) => void;
@@ -9,8 +15,68 @@ export class CdpError extends Error {
 	override name = 'CdpError';
 }
 
+/** A message channel: send one JSON message, receive whole messages. */
+interface Transport {
+	send(message: string): void;
+	close(): void;
+	onMessage: (message: string) => void;
+	onClose: () => void;
+}
+
+function webSocketTransport(ws: WebSocket): Transport {
+	const transport: Transport = {
+		send: (message) => ws.send(message),
+		close: () => ws.close(),
+		onMessage: () => {},
+		onClose: () => {},
+	};
+	ws.addEventListener('message', (event) =>
+		transport.onMessage(String(event.data)),
+	);
+	ws.addEventListener('close', () => transport.onClose());
+	ws.addEventListener('error', () => transport.onClose());
+	return transport;
+}
+
+/**
+ * Chromium's pipe protocol: the browser reads messages on its fd 3 and writes
+ * them on its fd 4, each message terminated by a NUL byte.
+ */
+function pipeTransport(
+	write: NodeJS.WritableStream,
+	read: NodeJS.ReadableStream,
+): Transport {
+	let buffer = '';
+	const transport: Transport = {
+		send: (message) => {
+			write.write(message + '\0');
+		},
+		close: () => {
+			write.end();
+		},
+		onMessage: () => {},
+		onClose: () => {},
+	};
+	read.setEncoding?.('utf8');
+	read.on('data', (chunk: string) => {
+		buffer += chunk;
+		let end: number;
+		while ((end = buffer.indexOf('\0')) !== -1) {
+			const message = buffer.slice(0, end);
+			buffer = buffer.slice(end + 1);
+			transport.onMessage(message);
+		}
+	});
+	read.on('close', () => transport.onClose());
+	read.on('end', () => transport.onClose());
+	read.on('error', () => transport.onClose());
+	// A write after the browser died raises EPIPE; that is a close, not a crash.
+	write.on('error', () => transport.onClose());
+	return transport;
+}
+
 export class CdpConnection {
-	#ws: WebSocket;
+	#transport: Transport;
 	#nextId = 0;
 	#pending = new Map<
 		number,
@@ -20,15 +86,21 @@ export class CdpConnection {
 	#closed = false;
 	#closeListeners = new Set<() => void>();
 
-	private constructor(ws: WebSocket) {
-		this.#ws = ws;
-		ws.addEventListener('message', (event) =>
-			this.#onMessage(String(event.data)),
-		);
-		ws.addEventListener('close', () => this.#onClose());
-		ws.addEventListener('error', () => this.#onClose());
+	private constructor(transport: Transport) {
+		this.#transport = transport;
+		transport.onMessage = (message) => this.#onMessage(message);
+		transport.onClose = () => this.#onClose();
 	}
 
+	/** Talk to a browser started with `--remote-debugging-pipe`. */
+	static fromPipe(
+		write: NodeJS.WritableStream,
+		read: NodeJS.ReadableStream,
+	): CdpConnection {
+		return new CdpConnection(pipeTransport(write, read));
+	}
+
+	/** Attach to a browser listening on a DevTools WebSocket URL. */
 	static connect(url: string, timeoutMs = 10_000): Promise<CdpConnection> {
 		return new Promise((resolve, reject) => {
 			const ws = new WebSocket(url);
@@ -40,7 +112,7 @@ export class CdpConnection {
 				'open',
 				() => {
 					clearTimeout(timer);
-					resolve(new CdpConnection(ws));
+					resolve(new CdpConnection(webSocketTransport(ws)));
 				},
 				{once: true},
 			);
@@ -69,7 +141,7 @@ export class CdpConnection {
 		const id = ++this.#nextId;
 		return new Promise<T>((resolve, reject) => {
 			this.#pending.set(id, {resolve, reject, method});
-			this.#ws.send(
+			this.#transport.send(
 				JSON.stringify(
 					sessionId ? {id, method, params, sessionId} : {id, method, params},
 				),
@@ -90,7 +162,7 @@ export class CdpConnection {
 	}
 
 	close(): void {
-		this.#ws.close();
+		this.#transport.close();
 		this.#onClose();
 	}
 

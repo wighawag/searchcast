@@ -1,12 +1,5 @@
 import {spawn, type ChildProcess} from 'node:child_process';
-import {
-	accessSync,
-	constants,
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	rmSync,
-} from 'node:fs';
+import {accessSync, constants, mkdirSync} from 'node:fs';
 import {delimiter, join} from 'node:path';
 import {CdpConnection, CdpError} from './cdp.js';
 
@@ -72,11 +65,12 @@ export class Browser {
 
 	static async launch(options: BrowserOptions): Promise<Browser> {
 		mkdirSync(options.userDataDir, {recursive: true});
-		const portFile = join(options.userDataDir, 'DevToolsActivePort');
-		rmSync(portFile, {force: true});
 
 		const args = [
-			'--remote-debugging-port=0',
+			// DevTools over the inherited fds 3 and 4, NOT a TCP port: no other
+			// process on the machine can reach the browser, and it works for a
+			// user that may not use loopback TCP at all (a Tor-forced account).
+			'--remote-debugging-pipe',
 			`--user-data-dir=${options.userDataDir}`,
 			'--no-first-run',
 			'--no-default-browser-check',
@@ -98,7 +92,8 @@ export class Browser {
 		args.push(...(options.extraArgs ?? []), 'about:blank');
 
 		const child = spawn(options.executable, args, {
-			stdio: ['ignore', 'ignore', 'pipe'],
+			// fd 3: we write, the browser reads; fd 4: the browser writes.
+			stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
 			// No session bus: given one, Chromium registers its own systemd scope
 			// and moves out of the caller's cgroup, so stopping the service that
 			// started it (and that service's memory limit) no longer reaches it.
@@ -130,19 +125,29 @@ export class Browser {
 			throw new CdpError(`browser ${reason}\n${stderr.trim()}`.trim());
 		};
 
-		const deadline = Date.now() + (options.launchTimeoutMs ?? 30_000);
-		let wsUrl: string | undefined;
-		while (!wsUrl) {
-			if (exited) fail(exited);
-			if (Date.now() > deadline) fail('did not start in time');
-			if (existsSync(portFile)) {
-				const [port, path] = readFileSync(portFile, 'utf8').trim().split('\n');
-				if (port && path) wsUrl = `ws://127.0.0.1:${port}${path}`;
-			}
-			if (!wsUrl) await sleep(100);
-		}
-		const cdp = await CdpConnection.connect(wsUrl);
+		const cdp = CdpConnection.fromPipe(
+			child.stdio[3] as NodeJS.WritableStream,
+			child.stdio[4] as NodeJS.ReadableStream,
+		);
 		child.once('exit', () => cdp.close());
+		// Ready when it answers. A browser that dies first closes the pipe, which
+		// rejects this with "connection closed" and is reported with its stderr.
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			await Promise.race([
+				cdp.send('Browser.getVersion'),
+				new Promise((_, reject) => {
+					timer = setTimeout(
+						() => reject(new Error('did not start in time')),
+						options.launchTimeoutMs ?? 30_000,
+					);
+				}),
+			]);
+		} catch (e) {
+			fail(exited ?? (e as Error).message);
+		} finally {
+			clearTimeout(timer);
+		}
 		return new Browser(cdp, child);
 	}
 
