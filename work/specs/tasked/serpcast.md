@@ -44,7 +44,7 @@ Three kinds of engine, cheapest first:
 10. As a recipe author, I want `serpcast query --recipe ./x.json "q"` to run one recipe once and print the results or the typed error, so that I can develop recipes quickly.
 11. As a recipe author, I want a recipe that uses browser-only features (`form` input) to be rejected by the HTTP runner with a clear error, so that I know it must run through searchcast.
 12. As a recipe author, I want HTTP 202/403/429 responses, a `blocked` selector match or a `blockedUrl` match (after redirects) to be reported as `blocked`, so that challenge pages are never mistaken for results.
-13. As a caller, I want every failure to be a typed error (`blocked`, `recipe`, `timeout`, `transport`, `impersonation`), and an empty result list only when the recipe's `empty` selector matched, so that a broken engine is never reported as "no results".
+13. As a caller, I want every failure to be a typed error (`blocked`, `recipe`, `timeout`, `transport`, `impersonation`, and `exhausted` when every engine failed), and an empty result list only when the recipe's `empty` selector matched, so that a broken engine is never reported as "no results".
 14. As a code-recipe author, I want a module contract `{name, search(query, ctx)}` where `ctx` gives me the impersonated HTTP client (with a request-kind option: document navigation, fetch/XHR, script, each with Chromium's header set for that kind), a per-engine session (cookies and arbitrary JSON state), the abort signal and a `blocked()` helper, so that I can implement a challenge flow without touching transport or identity.
 15. As a code-recipe author, I want my recipe to live anywhere on disk and be loaded by path, so that private engines never need to be in this repo.
 16. As a caller, I want to pass an ordered list of engines and get the first one that returns results, with the failures of the ones tried before it, so that a query costs as few requests as possible (engines gate on request volume per exit IP, and querying every engine per search spends that budget).
@@ -62,31 +62,6 @@ Three kinds of engine, cheapest first:
 - `humanOnly`: not set. The spec is agent-taskable once promoted.
 - `needsAnswers`: not set. The one real unknown (whether impers can reproduce the exact header set with its own defaults off) is handled as the first task, a spike whose outcome gates the transport task; it is not a question for a human.
 
-## Implementation Decisions
-
-- **Monorepo shape** mirrors webveil: pnpm workspace, TypeScript (NodeNext, strict), `tsc` build, vitest, prettier (tabs, single quotes, no bracket spacing). Packages `packages/serpcast-recipe` and `packages/serpcast`. Verify gate `pnpm format:check && pnpm build && pnpm test`.
-- **Licensing**: repo default AGPL-3.0-only (LICENSE at the root); `packages/serpcast-recipe` carries its own MIT LICENSE and `"license": "MIT"`. The reserved `serpcast-recipe@0.0.0` placeholder is AGPL; the first real release is MIT.
-- **Recipe schema ownership**: `serpcast-recipe` owns the schema, types, `RecipeError` and the validator (file and directory loading may stay in each consumer or live here as a node-only helper; the validator itself stays dependency-free). It starts as an extraction of searchcast's current `recipe.ts`, unchanged in meaning, so existing searchcast recipes stay valid. HTTP-only extensions (if any are later needed) are optional fields that searchcast ignores or rejects explicitly.
-- **Transport**: `impers` (npm, MIT, koffi FFI to libcurl-impersonate). One pinned impersonation target (start at `chrome146`, the version the private prior art pins) and header tables per request kind (document navigation, same-origin navigation with referer, fetch/XHR, script) for that exact Chrome version on Linux. The library's default headers are turned off so only our table is sent. Proxy passed through as a URL. The library path is resolved explicitly (config, then `LIBCURL_PATH`, then the data dir the install command writes to) and set before `impers` loads, so its auto-download never runs; if none is found, fail with an actionable error.
-- **Impersonation check**: on first use, verify the loaded library is libcurl-impersonate and accepts the pinned target (for example via the curl version string and a target-setting call). A `strict` option (default on) makes any failure an `impersonation` error. An optional `serpcast doctor` hits a fingerprint echo service to show JA3/JA4/HTTP2 values, never automatically.
-- **HTML parsing** for declarative recipes uses a small HTML parser plus a CSS selector engine over its tree (for example `parse5` or `rehype-parse` with `hast-util-select`, whichever is smaller and supports the selectors real recipes use). `href`/`src` fields resolve to absolute URLs against the final URL, matching searchcast.
-- **Engine chain**: ordered, sequential; stop at the first engine that returns results (or a matched `empty`); collect `{engine, error}` for each engine tried before it. Cooldown after `blocked`, default a few minutes, configurable, stored in the injected store.
-- **State store interface**: a small async key/value interface (`get`, `set`, `delete`, with per-key expiry) that serpcast namespaces by engine. Default in-memory. serpcast ships no file store; webveil provides its own.
-- **Code recipe contract**: ESM module with a default export `{name, search(query, ctx)}` returning results or throwing a serpcast error. Loaded only by explicit path from the caller; serpcast never scans for recipes on its own.
-- **searchcast integration**: an engine kind that delegates to a searchcast recipe, either through the `searchcast` library (optional peer dependency, proxy passed through) or through a searchcast HTTP/Unix-socket endpoint. searchcast's `blocked`/`recipe`/`timeout` map to serpcast's errors.
-- **Public API sketch** (decision-level, not final): `createSerpcast({libcurlPath?, impersonate?, strict?, proxy?, store?, sessionIdleMs?, cooldownMs?, searchcast?})` returning `{search(query, {engines, maxResults?, signal?}), close()}`; `loadRecipe(path)`; `loadCodeRecipe(path)`.
-- **Release**: changesets + GitHub Actions `release.yml` copied from searchcast's (npm Trusted Publishing via OIDC, `id-token: write`, Node 24, provenance, no `NPM_TOKEN`). Both names are reserved at `0.0.0`, so trusted publishers can be registered for `wighawag/serpcast` + `release.yml` on each package before the first real release.
-- **Size discipline**: track per-module LOC in the README as webveil does; the core (transport, runner, chain, loader) should stay well under 1k LOC.
-
-## Testing Decisions
-
-- The first task is a **fingerprint spike**: with `impers` loading libcurl-impersonate 2.1.1 and the pinned target, record the JA3/JA4, HTTP/2 (Akamai) fingerprint and the header order seen by a fingerprint echo service, and compare with curl_cffi using the same target and header table. Also confirm that impers can send ONLY our headers (defaults off) and that its auto-download can be fully prevented. The spike's recorded result is a finding in `work/notes/findings/`; if impers cannot match, the transport task is re-scoped (fallback candidate: a direct koffi binding to libcurl-impersonate).
-- Declarative runner tests run against local HTML fixtures served by a local test server (no live engines in CI): ready, empty, blocked selector, blockedUrl after redirect, 429 as blocked, missing title/url skipped, relative URLs resolved, `form` rejected.
-- Transport tests assert the exact outgoing header set per request kind against a local server (header names, order, values).
-- Chain tests use fake engines: first-success wins, failures collected, cooldown skip and expiry, empty is a success.
-- `serpcast-recipe` tests: every searchcast recipe fixture validates unchanged; invalid recipes fail with the same messages searchcast gives today.
-- Live checks against real engines are manual (`serpcast query`), never part of `verify`.
-
 ## Out of Scope
 
 - Anonymity policy (which proxy, per-identity state partitioning, trust policy for code recipes): that is the caller's job (webveil).
@@ -94,11 +69,9 @@ Three kinds of engine, cheapest first:
 - JSON-API results in declarative recipes (use a code recipe in v1).
 - Running the searchcast browser itself; serpcast delegates to searchcast.
 - Result merging/ranking across multiple engines (the chain stops at the first answer).
-- A decoy-results relevance guard (a well-formed page of results unrelated to the query). Worth doing later as an optional post-filter; capture as an idea.
+- A decoy-results relevance guard (a well-formed page of results unrelated to the query). Worth doing later as an optional post-filter; captured as idea `decoy-results-relevance-guard`.
 - An HTTP server mode. serpcast is a library and a recipe-development CLI.
 
 ## Further Notes
 
-- **Cross-repo change in searchcast** (no `work/` there yet, so it is recorded here): replace searchcast's in-file recipe schema and validator with a dependency on `serpcast-recipe`. searchcast is already `AGPL-3.0-only` in every published version, so no relicensing is needed. searchcast's README should link to serpcast as the HTTP runner for the same recipes.
-- **Consumer**: webveil will add a `serpcast` backend; see webveil's spec `serpcast-backend`, which depends on serpcast's first release.
-- **Human setup before the first release**: register the npm trusted publisher (repo `wighawag/serpcast`, workflow `release.yml`) on both `serpcast` and `serpcast-recipe`, and create the GitHub repo.
+Tasked 2026-09-28. Implementation and testing detail moved to `work/tasks/` (serpcast repo) and, for story 23, to `use-serpcast-recipe` in the searchcast repo; durable rationale moved to `docs/adr/0001`..`0003`. Consumer: webveil spec `serpcast-backend`.
