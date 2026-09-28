@@ -10,6 +10,8 @@ covers: [14, 15, 19]
 
 A second engine kind for sites that need challenge handling or a non-HTML API. `loadCodeRecipe(path)` imports an ESM module whose default export is `{name, search(query, ctx)}`; it is loaded only from the path the caller gives, never discovered. `ctx` carries: `http` (the impersonated transport bound to this engine's session, with the request-kind option and helpers for text and JSON responses), `session` (get/set of JSON state for this engine in the injected store, with the same idle expiry as cookies), `signal`, `maxResults`, and `blocked(message)` / `recipeError(message)` helpers that throw the typed errors. The module returns results in the normalized shape (validated; malformed entries are a `recipe` error). Code recipes go in the engine chain like declarative ones, including cooldowns.
 
+> FORWARD-NOTE (conductor, 2026-09-28): this repo is public and must not carry private or terms-sensitive engine specifics. Make the README example recipe target a clearly placeholder endpoint (for example `https://api.example.com/search?q=...`, with a comment saying to point it at an API whose terms allow automated access) rather than naming a real search engine or site, and ship no real-site recipe in the package or tests (tests use the injected fake transport or a local server only). The transport is GET-only for now (`impersonated-transport` decision 5), so `ctx.http` exposes GET only; do not add POST here. The known unhandled-rejection defect in `declarative.ts`'s `abortable()` (observation `declarative-abortable-unhandled-rejection.md`) is out of scope for this task, but do not copy that pattern into the code-recipe path.
+
 ## Acceptance criteria
 
 - [ ] A code recipe from a temp directory is loaded by path and runs in the chain.
