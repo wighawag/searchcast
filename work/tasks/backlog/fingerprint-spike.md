@@ -16,6 +16,8 @@ A measured answer, recorded as a finding, to three questions the transport depen
 
 Keep any spike code under a scratch directory that is not part of the published packages (or delete it after recording). The deliverable is the finding (including any recommended change of approach for the transport).
 
+> FORWARD-NOTE (conductor, 2026-09-28, build-host environment): from this build host `https://tls.peet.ws/api/all` timed out (20 s connect timeout, twice); `https://tls.browserleaks.com/json` answered and returns `ja4`, `ja4_r`, `ja3`/`ja3_hash` and `akamai`/`akamai_hash` fields. Prefer browserleaks (or try peet once with a short timeout, then fall back) and record which service was used in the finding. libcurl-impersonate 2.1.1 is already present locally at `/nix/store/0djkdm67a5jj9vl7hs8cj5cib64mxxqc-curl-impersonate-2.1.1/lib/libcurl-impersonate.so` (nixpkgs build), usable as the explicit library path for impers. Still no search engine may be contacted.
+
 ## Acceptance criteria
 
 - [ ] `work/notes/findings/impers-fingerprint-vs-curl-cffi.md` exists with a `source:` stating what was measured, with which versions (impers, libcurl-impersonate, curl_cffi) and the date.
