@@ -42,10 +42,17 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  * Runs recipes against one long-lived browser. Each search gets its own tab,
  * closed afterwards; all tabs share the persistent profile. The browser is
  * started on first use and restarted if it dies.
+ *
+ * Never two browsers on one profile: a second Chromium on a profile that is
+ * still held aborts ("Failed to create a ProcessSingleton", exit code 21). So
+ * every launch first waits for every browser retired before it (closed, or
+ * found dead) to have fully exited.
  */
 export class Searchcast {
 	#options: SearchcastOptions;
 	#browser?: Promise<Browser>;
+	/** Settles once every retired browser's process has exited. Never rejects. */
+	#retired: Promise<void> = Promise.resolve();
 	#active = 0;
 	#queue: Array<() => void> = [];
 
@@ -87,10 +94,29 @@ export class Searchcast {
 		await this.#getBrowser();
 	}
 
+	/**
+	 * Close the browser; resolves once it has exited. A later search starts a
+	 * new one, but only after this one is gone.
+	 */
 	async close(): Promise<void> {
 		const browser = this.#browser;
 		this.#browser = undefined;
-		if (browser) await (await browser.catch(() => undefined))?.close();
+		if (browser) this.#retire(browser);
+		await this.#retired;
+	}
+
+	/** Take a browser out of service; `#retired` waits for its process to exit. */
+	#retire(browser: Promise<Browser>): void {
+		this.#retired = Promise.all([
+			this.#retired,
+			browser.then(
+				(b) => b.close(),
+				() => {},
+			),
+		]).then(
+			() => {},
+			() => {},
+		);
 	}
 
 	async #run(
@@ -212,17 +238,20 @@ export class Searchcast {
 		if (browser && !browser.closed) return browser;
 		// Only the first caller to notice a dead browser relaunches it; the rest
 		// pick up that launch, so two browsers never share one profile.
-		if (this.#browser === current) return this.#launch();
+		if (this.#browser === current) {
+			this.#retire(current);
+			return this.#launch();
+		}
 		return this.#getBrowser();
 	}
 
 	#launch(): Promise<Browser> {
-		const launching = Browser.launch(this.#options.browser).catch(
-			(e: Error) => {
+		const launching = this.#retired
+			.then(() => Browser.launch(this.#options.browser))
+			.catch((e: Error) => {
 				if (this.#browser === launching) this.#browser = undefined;
 				throw new SearchcastError('browser', e.message);
-			},
-		);
+			});
 		this.#browser = launching;
 		return launching;
 	}

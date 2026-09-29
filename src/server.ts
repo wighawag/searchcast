@@ -36,8 +36,9 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 export interface ServerOptions {
 	/**
 	 * Call `onIdle` once no request has been in flight for this long. The
-	 * clock starts when the server is created, so a server nobody talks to
-	 * goes idle too.
+	 * clock starts when the server starts listening (not when it is created:
+	 * a slow browser warmup before `listen` must not count as idle time), so a
+	 * server nobody talks to goes idle too.
 	 */
 	idleMs?: number;
 	onIdle?: () => void;
@@ -58,7 +59,6 @@ export function createSearchcastServer(
 			options.idleMs,
 		);
 	};
-	armIdle();
 
 	const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 		active++;
@@ -69,6 +69,7 @@ export function createSearchcastServer(
 		});
 		void handle(req, res);
 	});
+	server.on('listening', () => active === 0 && armIdle());
 	server.once('close', () => clearTimeout(timer));
 	return server;
 

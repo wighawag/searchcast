@@ -189,7 +189,9 @@ describe.skipIf(!chrome)('the CLI', () => {
 			socketPath,
 			'/search?recipe=web&q=over%20a%20socket',
 		);
-		expect(status).toBe(200);
+		// The body carries the server's error (e.g. the browser's stderr), so a
+		// CI failure is diagnosable from the log alone.
+		expect(status, JSON.stringify(body)).toBe(200);
 		expect(body.results[0].title).toBe('over a socket result 1');
 
 		expect(await exitCode(child, 15_000)).toBe(0);

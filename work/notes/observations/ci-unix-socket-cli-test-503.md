@@ -1,3 +1,0 @@
-# CI: the unix-socket CLI test answers 503 instead of 200
-
-2026-09-29. `test/cli.test.ts` > "the CLI > serves a unix socket with an ephemeral profile, then exits when idle and deletes the profile" fails in GitHub Actions with `expected 503 to be 200` on every `main` run since at least `Version Packages (#2)` (runs 36183201853, 36459746099, 36530539102) and on the `use-serpcast-recipe` PR. Locally the browser tests are skipped (no Chromium configured), so the dorfl verify gate stays green and does not see it. 503 is presumably the server's `browser` error (Chromium failed to start or to answer) on the CI runner in socket mode, while the TCP-mode tests pass. Needs a look at the server's error body in CI; not investigated further.
