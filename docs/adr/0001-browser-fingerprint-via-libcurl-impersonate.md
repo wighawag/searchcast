@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted (the "via impers" loading is superseded by ADR 0004; the pinned target and header-table decisions stand)
 
 Search engines gate crawlers on the TLS/JA3/JA4 and HTTP/2 fingerprint, and Node's own HTTP stack (undici) carries a Node fingerprint, so serpcast sends all engine traffic through libcurl-impersonate, the same native library SearXNG reaches through curl_cffi, loaded in Node via `impers` (the Node port of curl_cffi by the same author, koffi FFI, MIT). The impersonation target is pinned to one explicit Chrome version (never the moving `chrome` alias) and the library's default headers are turned off: every request carries only our header table for that exact Chrome version, per request kind (document navigation, same-origin navigation, fetch/XHR, script). A request whose headers describe a different browser than its TLS handshake is itself a bot signal (privately measured: 0/8 answered with mismatched headers, 30/30 with a coherent set, same IP), so matching the TLS side alone is not enough.
 
