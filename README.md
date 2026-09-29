@@ -4,7 +4,7 @@ Turn a web search form into a JSON API by driving a real browser.
 
 You describe a site in a small JSON **recipe**: how to get a query in (a URL template, or an input to type into and a way to submit), which element means the results are ready, which elements mean a challenge page, and how to read each result out. searchcast keeps one long-lived Chromium with a persistent profile, runs each query in its own tab, and returns the results as JSON.
 
-It talks to Chromium over the DevTools protocol directly, with no automation framework and no runtime dependencies.
+It talks to Chromium over the DevTools protocol directly, with no automation framework. Its one runtime dependency is [`serpcast-recipe`](https://github.com/wighawag/serpcast/tree/main/packages/serpcast-recipe), the recipe schema it shares with serpcast.
 
 ## Install
 
@@ -78,6 +78,8 @@ A failure is never an empty result list. It is an error status with `{error, mes
 An empty list only comes back when the recipe's `empty` selector matched.
 
 ## Recipes
+
+The recipe format is shared with [serpcast](https://github.com/wighawag/serpcast), which runs the same recipes over plain HTTP with a browser fingerprint instead of a real browser. Both validate recipes with the [`serpcast-recipe`](https://github.com/wighawag/serpcast/tree/main/packages/serpcast-recipe) package, so one recipe file describes a site for both. serpcast can only run `navigate` recipes; `form` recipes need searchcast.
 
 A recipe is a JSON file. When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name.
 

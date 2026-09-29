@@ -28,3 +28,8 @@ Origin: the serpcast spec (`wighawag/serpcast`, `work/specs/tasked/serpcast.md`,
 Goal: one recipe format for two runners, with no drift (serpcast ADR 0003). Compare `serpcast-recipe`'s exports with searchcast's current recipe module first; if the published package differs in meaning or messages, do NOT paper over it: route the task to needs-attention with the difference, because the fix belongs in `serpcast-recipe`.
 
 FIRST, check this task against current reality (launch snapshot; may have drifted). RECORD non-obvious in-scope decisions.
+
+## Decisions
+
+- **Version range `^0.1.0`, not an exact pin.** Why: this is the standard range for a runtime dependency, and on 0.x a caret only allows 0.1.x patches. ADR 0003 makes `serpcast-recipe` the single home of the format, so later fixes there should reach searchcast. Alternative: pin `0.1.0` exactly, so no upstream patch could change messages without a searchcast release. Touches only searchcast's `package.json` and the lockfile.
+- **No new exports.** The package also exports `DEFAULT_LIMIT`, `DEFAULT_TIMEOUT_MS`, `requiresBrowser` and `packageName`. I did not add them to searchcast's public API, and I did not replace searchcast's own hard-coded defaults of 10 and 15000 with the package constants. Why: the task says the public API does not change, and it scopes the work to the schema and validator. Alternative: re-export them and use them in `searchcast.ts`, which would be a separate follow-up. Touches `src/index.ts` and `src/searchcast.ts` only if someone takes that up later.
