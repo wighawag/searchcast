@@ -6,6 +6,10 @@ settings:
 
 importers:
   .:
+    dependencies:
+      serpcast-recipe:
+        specifier: ^0.1.0
+        version: 0.1.0
     devDependencies:
       '@changesets/cli':
         specifier: ^2.31.1
@@ -1074,6 +1078,12 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  serpcast-recipe@0.1.0:
+    resolution:
+      {
+        integrity: sha512-LSrrKiWcaatb0qVuIJu7Udh+Hhla2gTSNDuu1ybnOlenyrObsurcU+r74p9AEJKqkW+aSS3/YtopV1POBvl6LA==,
+      }
+
   shebang-command@2.0.0:
     resolution:
       {
@@ -1925,6 +1935,8 @@ snapshots:
   safer-buffer@2.1.2: {}
 
   semver@7.8.5: {}
+
+  serpcast-recipe@0.1.0: {}
 
   shebang-command@2.0.0:
     dependencies:
