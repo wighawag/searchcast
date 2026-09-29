@@ -53,10 +53,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Browser {
 	readonly cdp: CdpConnection;
 	#process: ChildProcess;
+	#exited: Promise<void>;
 
-	private constructor(cdp: CdpConnection, process: ChildProcess) {
+	private constructor(
+		cdp: CdpConnection,
+		process: ChildProcess,
+		exited: Promise<void>,
+	) {
 		this.cdp = cdp;
 		this.#process = process;
+		this.#exited = exited;
 	}
 
 	get closed(): boolean {
@@ -103,6 +109,15 @@ export class Browser {
 				DBUS_SESSION_BUS_ADDRESS: 'disabled:',
 			},
 		});
+		// Resolves once the browser process is gone, and with it its hold on the
+		// profile (its SingletonLock). `error` alone only means "gone" when the
+		// spawn itself failed; otherwise an `exit` follows.
+		const processExited = new Promise<void>((resolve) => {
+			child.once('exit', () => resolve());
+			child.once('error', () => {
+				if (child.pid === undefined) resolve();
+			});
+		});
 		let stderr = '';
 		child.stderr?.on('data', (chunk) => {
 			stderr = (stderr + chunk).slice(-4000);
@@ -120,8 +135,11 @@ export class Browser {
 		process.prependOnceListener('exit', killChild);
 		child.once('exit', () => process.removeListener('exit', killChild));
 
-		const fail = (reason: string): never => {
+		// Waits for the process to be gone before reporting: whoever retries
+		// must not start a second browser on a profile this one still holds.
+		const fail = async (reason: string): Promise<never> => {
 			child.kill('SIGKILL');
+			await processExited;
 			throw new CdpError(`browser ${reason}\n${stderr.trim()}`.trim());
 		};
 
@@ -144,11 +162,12 @@ export class Browser {
 				}),
 			]);
 		} catch (e) {
-			fail(exited ?? (e as Error).message);
+			clearTimeout(timer);
+			await fail(exited ?? (e as Error).message);
 		} finally {
 			clearTimeout(timer);
 		}
-		return new Browser(cdp, child);
+		return new Browser(cdp, child, processExited);
 	}
 
 	async newPage(): Promise<Page> {
@@ -166,6 +185,11 @@ export class Browser {
 		return new Page(this.cdp, targetId, sessionId);
 	}
 
+	/**
+	 * Close the browser and resolve only once its process has exited, so the
+	 * profile is free for the next browser. Also the way to retire a browser
+	 * that died on its own (`closed`): its process may still be shutting down.
+	 */
 	async close(): Promise<void> {
 		if (!this.cdp.closed) {
 			await Promise.race([
@@ -175,12 +199,10 @@ export class Browser {
 		}
 		this.cdp.close();
 		if (this.#process.exitCode === null && this.#process.signalCode === null) {
-			await Promise.race([
-				new Promise((r) => this.#process.once('exit', r)),
-				sleep(3000),
-			]);
+			await Promise.race([this.#exited, sleep(3000)]);
 			this.#process.kill('SIGKILL');
 		}
+		await this.#exited;
 	}
 }
 

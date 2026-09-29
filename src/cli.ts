@@ -170,6 +170,8 @@ async function main(argv: string[]): Promise<void> {
 		process.once('SIGINT', () => void shutdown('SIGINT'));
 		process.once('SIGTERM', () => void shutdown('SIGTERM'));
 		await searchcast.warmup();
+		// A SIGTERM during the warmup already closed the server: do not reopen it.
+		if (stopping) return;
 		if (listen === 'systemd') {
 			server.listen({fd: 3});
 		} else if (listen.startsWith('/')) {
