@@ -4,6 +4,7 @@ slug: session-connection-reuse
 spec: serpcast
 blockedBy: []
 covers: []
+needsAnswers: true
 ---
 
 ## What to build
