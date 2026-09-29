@@ -19,6 +19,8 @@ Make a `TransportSession` reuse connections across its own requests: one long-li
 - The session gains a way to release its connections (`close()` or similar) and the engine chain closes each engine's session connections when the session is dropped (idle expiry, `clearSessions`, `close()`); an idle connection must not keep the process alive (no leaked handle keeps Node's event loop running after `Serpcast.close()`), and `process.exit()` must still not deadlock (the existing exit tests pass).
 - Keep all libcurl calls on the main thread (the no-deadlock design).
 
+> RETRY HANDOFF (conductor, 2026-09-29): the first build (kept branch `work/task-session-connection-reuse`) went red on its OWN new test only: `test/serpcast-connections.test.ts` > "gives a concurrent search on the same engine its own session, closed after" fails at line 173, `expect(sessions).toHaveLength(2)` got 3: after the concurrent search's extra session is closed, the next search on engine `a` created a NEW session instead of reusing the kept one. Decide which behaviour is right (reusing the engine's kept session is the expected one: sessions are per engine and should survive between searches until idle expiry), fix the code or the test accordingly, record why, and rerun the whole suite. Everything else was green (222 passed).
+
 ## Acceptance criteria
 
 - [ ] Two requests on one session to the same origin reuse one connection (asserted); two sessions never share one (asserted).
