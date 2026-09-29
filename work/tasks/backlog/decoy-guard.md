@@ -8,7 +8,7 @@ covers: []
 
 ## What to build
 
-The idea `work/notes/ideas/decoy-results-relevance-guard.md` (this task promotes and deletes it), now with measurements. Some engines, Bing above all, answer with a well-formed page of results unrelated to the query. Measured 2026-09-29 with serpcast and two Node clients (my-boxes finding `search-engine-gatekeeping-by-egress-class`): Bing decoyed about half of realistic queries direct and most over Tor, the SAME queries for every client, and over Tor a given query decoyed on every repeat. Earlier (2026-09-26, same finding) an immediate retry rescued 0 of 16 decoys, so a decoy is a property of (engine, query, moment), not of the client.
+The former idea note `decoy-results-relevance-guard` (removed when this task was written; its content is folded in here), now with measurements. Some engines, Bing above all, answer with a well-formed page of results unrelated to the query. Measured 2026-09-29 with serpcast and two Node clients (my-boxes finding `search-engine-gatekeeping-by-egress-class`): Bing decoyed about half of realistic queries direct and most over Tor, the SAME queries for every client, and over Tor a given query decoyed on every repeat. Earlier (2026-09-26, same finding) an immediate retry rescued 0 of 16 decoys, so a decoy is a property of (engine, query, moment), not of the client.
 
 Add an opt-in guard to the engine chain:
 
