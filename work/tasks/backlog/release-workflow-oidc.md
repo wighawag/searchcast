@@ -11,6 +11,8 @@ covers: [24]
 
 The release pipeline: changesets configured for the two packages (independent versions), and a GitHub Actions `release.yml` that opens or updates a "Version Packages" PR from pending changesets and, when that PR is merged, runs `changeset publish` authenticating through npm Trusted Publishing (OIDC, `id-token: write`, Node 24, provenance, no `NPM_TOKEN`). The trusted publishers are already registered on npm for both `serpcast` and `serpcast-recipe` (repo `wighawag/serpcast`, workflow `release.yml`), so the workflow file name must be exactly `release.yml`.
 
+> FORWARD-NOTE (conductor, 2026-09-29, owner instruction): the owner asked for this task to be built by the drive (explicit dispatch of a `humanOnly` task) and for the first release to go out now, so include the first changeset in this PR: `minor` for both `serpcast` and `serpcast-recipe`, producing `0.1.0` for each (both are at `0.0.0` on npm, trusted publishers already registered for `release.yml`). Also, from the scaffold's recorded decision 2: `packages/serpcast` ships no README today, so its npm page would be empty. Make the published `serpcast` package carry a README (the root README, copied at pack time as webveil's `copy-publish-assets` does, or a package README that points to it) and its AGPL `LICENSE`; `serpcast-recipe` already has its own README and MIT `LICENSE`. Verify with `pnpm pack --dry-run` in each package that only `dist`, README, LICENSE and package.json ship.
+
 ## Acceptance criteria
 
 - [ ] `.changeset/config.json` exists; `pnpm changeset` works locally.
