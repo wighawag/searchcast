@@ -189,7 +189,15 @@ describe.skipIf(!chrome)('the CLI', () => {
 			socketPath,
 			'/search?recipe=web&q=over%20a%20socket',
 		);
-		console.error('DEBUG-503', status, JSON.stringify(body), 'TMPDIR', tmp, 'len', tmp.length);
+		console.error(
+			'DEBUG-503',
+			status,
+			JSON.stringify(body),
+			'TMPDIR',
+			tmp,
+			'len',
+			tmp.length,
+		);
 		expect(status).toBe(200);
 		expect(body.results[0].title).toBe('over a socket result 1');
 
