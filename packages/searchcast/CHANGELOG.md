@@ -4,7 +4,6 @@
 
 ### Minor Changes
 
-- 0687410: The published `searchcast` package now includes its `CHANGELOG.md`, like `@searchcast/browser` and `@searchcast/recipe`.
 - f460121: searchcast 0.2.0 is serpcast renamed. It replaces the browser runner published as searchcast 0.1.x, which is now `@searchcast/browser`; `searchcast serve` keeps its flags and behaviour. Library users of searchcast 0.1.x import `@searchcast/browser` instead (`npm install @searchcast/browser`), and library-mode browser engines now need `@searchcast/browser` (the optional peer dependency, `npm install @searchcast/browser`) instead of `searchcast`.
 
   Users of serpcast: install `searchcast` instead of `serpcast` (0.6.0 is the last serpcast feature release; `serpcast` is deprecated). Every command and API is there under the new names, and the old ones keep working for one release (0.2.x):
@@ -17,10 +16,11 @@
 
   The old names, the old environment variable and the old data directory are no longer read from the next minor after 0.2.x.
 
-- 7e95404: `npm install searchcast` now brings libcurl-impersonate on Linux x64 and arm64 (glibc), macOS x64 and arm64 and Windows x64: the pinned library comes in the platform package `@searchcast/libcurl-<platform>`, an optional dependency pinned to the exact version this release was built with. searchcast looks for the library in the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory, serpcast's old data directory, and last in that platform package; strict mode checks it at load as before, and nothing is downloaded at install or at run time. `searchcast doctor` names it (`from: the platform package @searchcast/libcurl-linux-x64 0.1.0 (installed with searchcast)`), and the doctor report's `library` gains `package` (`{name, version}`) with the source `platform package`. `searchcast install-libcurl` stays for platforms without a package and installs that skipped optional dependencies; its messages and the not-found error say so.
 - a2dd040: `searchcast serve` and `searchcast browser-query` are back on the `searchcast` bin, with searchcast 0.1.x's flags, defaults, messages and exit codes (`--listen host:port|/path.sock|systemd`, `--idle-exit`, `--xvfb`, `--ephemeral`, `--profile`, `--proxy`, `--headless`, `--concurrency`, `--chrome-arg=`). They run the browser runner from `@searchcast/browser`, the optional peer dependency, so after upgrading from searchcast 0.1.x install it next to `searchcast` (`npm install -g searchcast @searchcast/browser`) and existing systemd units work unchanged; without it, both commands exit with code 1 and one line naming the package and the install command. `browser-query` is 0.1.x's browser `searchcast query` (`searchcast query` is now the HTTP query). Neither command loads koffi or libcurl-impersonate. `searchcast --help` lists both.
 
   The SearXNG engine ships in the `searchcast` package again, at the same path as in 0.1.x: `integrations/searxng/searchcast.py`.
+- 7e95404: `npm install searchcast` now brings libcurl-impersonate on Linux x64 and arm64 (glibc), macOS x64 and arm64 and Windows x64: the pinned library comes in the platform package `@searchcast/libcurl-<platform>`, an optional dependency pinned to the exact version this release was built with. searchcast looks for the library in the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory, serpcast's old data directory, and last in that platform package; strict mode checks it at load as before, and nothing is downloaded at install or at run time. `searchcast doctor` names it (`from: the platform package @searchcast/libcurl-linux-x64 0.1.0 (installed with searchcast)`), and the doctor report's `library` gains `package` (`{name, version}`) with the source `platform package`. `searchcast install-libcurl` stays for platforms without a package and installs that skipped optional dependencies; its messages and the not-found error say so.
+- 0687410: The published `searchcast` package now includes its `CHANGELOG.md`, like `@searchcast/browser` and `@searchcast/recipe`.
 
 ### Patch Changes
 
