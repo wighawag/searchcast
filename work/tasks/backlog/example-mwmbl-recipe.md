@@ -1,7 +1,7 @@
 ---
 title: A second example code recipe, Mwmbl's keyless public API
 slug: example-mwmbl-recipe
-blockedBy: [fetch-author-headers]
+blockedBy: []
 covers: []
 ---
 
@@ -23,7 +23,7 @@ Facts, read 2026-09-30 from https://developer.mwmbl.org/ and checked with one re
 
 ## Blocked by
 
-- fetch-author-headers (only so the two example edits do not collide; the Mwmbl recipe itself needs no author header)
+- None, can start immediately (it needs no author header; `fetch-author-headers` was re-scoped and runs after it).
 
 ## Prompt
 

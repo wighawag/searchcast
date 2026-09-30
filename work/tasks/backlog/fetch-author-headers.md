@@ -1,7 +1,7 @@
 ---
 title: Code recipes can add their own headers to a fetch request, placed and preflighted as Chrome does (measured first)
 slug: fetch-author-headers
-blockedBy: []
+blockedBy: [example-mwmbl-recipe]
 covers: []
 needsAnswers: true
 ---
@@ -17,6 +17,8 @@ Today a request carries only the pinned Chrome header table for its kind, so an 
 - README: a "Headers a code recipe adds" subsection (what is allowed, the placement, the preflight). CONTEXT.md: **Author header**.
 - Changeset: `searchcast` minor.
 
+> RETRY HANDOFF (conductor, 2026-09-30, after the first attempt STOPPED correctly): the measurement (kept on branch `work/task-fetch-author-headers`, note `work/notes/observations/2026-09-30-author-header-order-is-hash-order.md`) showed Chrome orders author headers by Blink's `HTTPHeaderMap` hash iteration over the whole name set, so there is no fixed slot, and larger sets even move `user-agent`. Re-scope, decided by the conductor under the "strict impersonation must survive" rule (option (b) of the stop note): support ONLY a measured allowlist of author-header NAME SETS, each with its measured wire order per request kind and method; start with the single-header sets `{api-key}` and `{authorization}` (both measured: after `sec-ch-ua-platform`, before `user-agent`, for a same-origin GET; measure and add the POST and cross-origin placements the same way, local servers only). Any other set (including two headers together) is refused with a `recipe` error that names the supported sets and says why (Chrome's order for it is not modelled). Keep every other measured rule from that note (lowercase names, the preflight for a cross-origin GET and POST, `access-control-request-headers` sorted and comma-joined without spaces, refusal when not allowed, the preflight cache covering header names, `accept-language`/`priority` and forbidden names). Turn the note into the finding `work/notes/findings/fetch-author-headers.md` with the method, versions and the hash-order explanation, so a later task can extend the allowlist by measuring. Build on that branch. Depends on `example-mwmbl-recipe` only so the two README edits do not collide.
+
 ## Acceptance criteria
 
 - [ ] The finding records the measured placement and preflight rules, with the method and versions, from local servers only.
@@ -27,7 +29,7 @@ Today a request carries only the pinned Chrome header table for its kind, so an 
 
 ## Blocked by
 
-- None, can start immediately.
+- example-mwmbl-recipe (README edits only)
 
 ## Prompt
 
