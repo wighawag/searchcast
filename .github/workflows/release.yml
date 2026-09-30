@@ -5,7 +5,9 @@ name: release
 #   2. This workflow opens/updates a "Version Packages" PR that bumps versions
 #      and updates changelogs from the pending changesets.
 #   3. Merging that PR (which removes the changesets) makes this workflow run
-#      `changeset publish`, publishing the changed packages to npm.
+#      `changeset publish`, publishing the changed packages to npm. A package
+#      whose version is already on npm is skipped, so releasing one package of
+#      the monorepo does not republish the others.
 #
 # Auth is npm Trusted Publishing (OIDC): NO NPM_TOKEN secret. npm trusts this
 # repo + workflow (release.yml) via the trusted publisher registered on the
@@ -67,3 +69,10 @@ jobs:
           version: pnpm changeset version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Require provenance instead of relying on auto-detection. pnpm 11
+          # (the workspace's packageManager since serpcast was merged in)
+          # publishes natively, not through the npm CLI: it reads this setting
+          # from `pnpm_config_*` env vars and ignores a package.json
+          # `publishConfig.provenance`. With it set, a publish that cannot be
+          # attested fails instead of going out unstamped.
+          PNPM_CONFIG_PROVENANCE: true
