@@ -165,11 +165,17 @@ describe.skipIf(!chrome)('the CLI', () => {
 		if (work) rmSync(work, {recursive: true, force: true});
 	});
 
-	function serve(args: string[], env: NodeJS.ProcessEnv = {}): ChildProcess {
+	/** Run `searchcast [before...] serve --recipes ... [args...]`. */
+	function serve(
+		args: string[],
+		env: NodeJS.ProcessEnv = {},
+		before: string[] = [],
+	): ChildProcess {
 		const child = spawn(
 			process.execPath,
 			[
 				...cli,
+				...before,
 				'serve',
 				'--recipes',
 				recipesDir,
@@ -211,6 +217,32 @@ describe.skipIf(!chrome)('the CLI', () => {
 		expect(await exitCode(child, 15_000)).toBe(0);
 		expect(profiles()).toEqual([]);
 		expect(existsSync(socketPath)).toBe(false);
+	}, 60_000);
+
+	// searchcast 0.1.2 parsed the whole argv, so options could come before the
+	// command; that order still serves.
+	it('serves with options before the command (searchcast --ephemeral serve ...)', async () => {
+		const tmp = mkdtempSync(join(work, 'tmp-'));
+		const socketPath = join(work, 'before.sock');
+		const child = serve(['--idle-exit', '2'], {TMPDIR: tmp}, [
+			'--headless',
+			'--ephemeral',
+			'--listen',
+			socketPath,
+		]);
+		await waitServing(child);
+		const {status, body} = await getUnix(
+			socketPath,
+			'/search?recipe=web&q=options%20first',
+		);
+		expect(status, JSON.stringify(body)).toBe(200);
+		expect(body.results[0].title).toBe('options first result 1');
+		expect(await exitCode(child, 15_000)).toBe(0);
+		// Only our profile must be gone: Chrome itself may leave its own entries
+		// (e.g. com.google.Chrome.chrome_chrome_url_fetcher_*) in TMPDIR.
+		expect(
+			readdirSync(tmp).filter((f) => f.startsWith('searchcast-profile-')),
+		).toEqual([]);
 	}, 60_000);
 
 	// The regression that took searchcast down in a Tor-forced account: it used

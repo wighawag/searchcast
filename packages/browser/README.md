@@ -55,6 +55,8 @@ await runCli(['serve', '--recipes', './recipes', '--listen', '127.0.0.1:8931']);
 
 `runCli(argv)` is the command line that the `searchcast` 0.1.x bin ran, as a function: `searchcast serve` and `searchcast browser-query` (the one-shot query that 0.1.x called `searchcast query`) from the `searchcast` package call it with their arguments unchanged. It writes errors as `searchcast: <message>` and exits the process with code 2 on a usage error; `serve` exits with 0 on SIGINT, SIGTERM or `--idle-exit`. Nothing runs on import.
 
+`browserCommand(argv)` is the command `runCli(argv)` would run: the first positional of `argv` under the runner's own options (`browserCommand(['--listen', 'systemd', 'serve'])` is `'serve'`), or `undefined` when there is none or `argv` does not parse under them. The `searchcast` bin uses it to accept options before `serve` and `browser-query`, as the 0.1.x bin did.
+
 To run it as a service, install `searchcast` and `@searchcast/browser` side by side (`npm install -g searchcast @searchcast/browser`). The flags, the systemd socket activation example, the HTTP API and the SearXNG engine (shipped in the `searchcast` package at `integrations/searxng/searchcast.py`) are documented in the searchcast README: [Serving from a real browser (`searchcast serve`)](https://github.com/wighawag/searchcast#serving-from-a-real-browser-searchcast-serve).
 
 ## Develop

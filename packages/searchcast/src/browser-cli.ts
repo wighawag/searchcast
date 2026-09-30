@@ -9,10 +9,13 @@
 //
 // Decisions (recorded in
 // work/notes/observations/2026-09-30-searchcast-serve-command-decisions.md):
-// - A browser command is recognised only as the FIRST argument
-//   (`searchcast serve ...`, as documented and as every systemd unit spells
-//   it). searchcast 0.1.2 also accepted options before the command; that form
-//   now reaches the HTTP commands' parser and is a usage error.
+// - A browser command is recognised as the first argument (`searchcast serve
+//   ...`, as documented and as every systemd unit spells it) and, as
+//   searchcast 0.1.2 accepted, after options (`searchcast --ephemeral serve
+//   ...`): when the first argument is an option and argv names no HTTP command,
+//   `@searchcast/browser/cli`'s `browserCommand` finds the command with the
+//   browser runner's own option table (not copied here). Recorded in
+//   work/notes/observations/2026-09-30-serve-options-before-command-decisions.md.
 // - A missing `@searchcast/browser` exits with 1 (a failure, like a failed
 //   install), not 2 (the command line was right; the machine lacks a package),
 //   with one line naming the package and the install command.
@@ -34,20 +37,19 @@ export function browserMissingMessage(command: string): string {
 
 interface BrowserCli {
 	runCli(argv: string[]): Promise<void>;
+	browserCommand(argv: string[]): string | undefined;
 }
 
 /**
- * Run a browser command through `@searchcast/browser`'s `runCli`, which owns
- * the process from there (it writes its own errors and sets the exit code). When
- * the package is missing, write {@link browserMissingMessage} and exit with 1.
+ * Import `@searchcast/browser/cli`. When the package is missing, write
+ * {@link browserMissingMessage} for `command` and exit with 1.
  */
-export async function runBrowserCli(argv: string[]): Promise<void> {
+async function loadBrowserCli(command: string): Promise<BrowserCli> {
 	// A variable specifier, so tsc does not resolve it: the package is an
 	// optional peer dependency.
 	const specifier = `${PACKAGE}/cli`;
-	let cli: BrowserCli;
 	try {
-		cli = (await import(specifier)) as BrowserCli;
+		return (await import(specifier)) as BrowserCli;
 	} catch (error) {
 		const {code, message} = error as {code?: string; message?: string};
 		// Only the package itself missing; a broken install is reported as is.
@@ -57,8 +59,44 @@ export async function runBrowserCli(argv: string[]): Promise<void> {
 		) {
 			throw error;
 		}
-		process.stderr.write(browserMissingMessage(argv[0]!) + '\n');
+		process.stderr.write(browserMissingMessage(command) + '\n');
 		process.exit(1);
 	}
+}
+
+/**
+ * Run a browser command (`argv[0]`) through `@searchcast/browser`'s `runCli`,
+ * which owns the process from there (it writes its own errors and sets the
+ * exit code). When the package is missing, write {@link browserMissingMessage}
+ * and exit with 1.
+ */
+export async function runBrowserCli(argv: string[]): Promise<void> {
+	const cli = await loadBrowserCli(argv[0]!);
 	await cli.runCli(argv);
+}
+
+/**
+ * For an `argv` that starts with an option and names no HTTP command: run it
+ * through `runCli`, unchanged, when the browser runner's option table finds
+ * `serve` or `browser-query` as its command (`searchcast --ephemeral serve
+ * ...`, as searchcast 0.1.2 accepted), and resolve `true`; otherwise resolve
+ * `false` and the HTTP commands' parser reports the usage error. The package
+ * is only imported when one of those words is in `argv`, so other usage errors
+ * never load it. When it is missing, the first such word is taken as the
+ * command: {@link browserMissingMessage} for it, exit 1.
+ */
+export async function runBrowserCliAfterOptions(
+	argv: string[],
+): Promise<boolean> {
+	const named = argv.find((arg) =>
+		(BROWSER_COMMANDS as readonly string[]).includes(arg),
+	);
+	if (!named) return false;
+	const cli = await loadBrowserCli(named);
+	const command = cli.browserCommand(argv);
+	if (!(BROWSER_COMMANDS as readonly string[]).includes(command ?? '')) {
+		return false;
+	}
+	await cli.runCli(argv);
+	return true;
 }
