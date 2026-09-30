@@ -1,64 +1,41 @@
-# searchcast
+# @searchcast/browser
 
-Turn a web search form into a JSON API by driving a real browser.
+The real-browser runner of [searchcast](https://github.com/wighawag/searchcast), as a library: turn a web search form into a JSON API by driving a real browser.
 
-You describe a site in a small JSON **recipe**: how to get a query in (a URL template, or an input to type into and a way to submit), which element means the results are ready, which elements mean a challenge page, and how to read each result out. searchcast keeps one long-lived Chromium with a persistent profile, runs each query in its own tab, and returns the results as JSON.
+You describe a site in a small JSON **recipe**: how to get a query in (a URL template, or an input to type into and a way to submit), which element means the results are ready, which elements mean a challenge page, and how to read each result out. `Searchcast` keeps one long-lived Chromium with a persistent profile, runs each query in its own tab, and returns the results as JSON.
 
-It talks to Chromium over the DevTools protocol directly, with no automation framework. Its one runtime dependency is [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe), the recipe schema it shares with serpcast.
+It talks to Chromium over the DevTools protocol directly, with no automation framework. Its one runtime dependency is [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe), the recipe schema it shares with `searchcast`'s HTTP runner.
+
+Formerly the `searchcast` package 0.1.x (same API, same names). The command line is now `searchcast serve` and `searchcast browser-query` from the [`searchcast`](https://github.com/wighawag/searchcast) package, which runs this package's `./cli` entry.
 
 ## Install
 
 ```sh
-npm install -g searchcast
+npm install @searchcast/browser
 ```
 
-Requires Node 22+ and a Chromium or Chrome executable (`--chrome`, `$SEARCHCAST_CHROME`, or `chromium`/`chrome` on `PATH`).
+Requires Node 22+ and a Chromium or Chrome executable (`$SEARCHCAST_CHROME`, or `chromium`/`chrome` on `PATH`; `findChrome()` looks there).
 
 ## Use
 
-One-shot, to develop a recipe:
+```ts
+import {Searchcast, findChrome, loadRecipeFile} from '@searchcast/browser';
 
-```sh
-searchcast query --recipe ./recipes/web.json "some query"
+const searchcast = new Searchcast({
+	browser: {executable: findChrome()!, userDataDir: './profile'},
+});
+const {results} = await searchcast.search(
+	loadRecipeFile('./recipes/web.json'),
+	'some query',
+);
+await searchcast.close();
 ```
 
-As a service:
+A failure is never an empty result list: `search` rejects with a `SearchcastError` whose `code` is `blocked` (a `blocked` selector or `blockedUrl` pattern matched), `recipe` (the page does not match the recipe), `timeout` (neither `ready` nor `empty` appeared within `timeoutMs`) or `browser` (the browser could not be started or reached). An empty list only comes back when the recipe's `empty` selector matched.
 
-```sh
-searchcast serve --recipes ./recipes --listen 127.0.0.1:8931 --proxy socks5://127.0.0.1:1080
-curl 'http://127.0.0.1:8931/search?recipe=web&q=some+query'
-```
+The browser runs headful by default. On a server without a display, `startXvfb({executable})` starts a private virtual display for it (authenticated with a fresh cookie, no TCP or abstract socket); pass its `env` as the browser's `env`. `headless: true` works too, but is easier for sites to tell apart from a person. The browser only loads the pages it is asked for: background networking, component updates, sync and pings are off.
 
-The browser runs headful by default. On a server without a display, pass `--xvfb $(command -v Xvfb)`: searchcast starts a private virtual display for it (authenticated with a fresh cookie, no TCP or abstract socket). `--headless` works too, but is easier for sites to tell apart from a person.
-
-| Option                  | Default                                                                                            |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `--listen <where>`      | `127.0.0.1:8931`; also `/path.sock`, or `systemd` for a socket passed by systemd socket activation |
-| `--idle-exit <seconds>` | never; exit after this long with no request in flight                                              |
-| `--chrome <path>`       | `$SEARCHCAST_CHROME`, then `PATH`                                                                  |
-| `--profile <dir>`       | `$XDG_STATE_HOME/searchcast/profile`                                                               |
-| `--ephemeral`           | off; use a fresh profile in a temporary directory, deleted on exit                                 |
-| `--xvfb <path>`         | none; run the browser on its own Xvfb display                                                      |
-| `--proxy <url>`         | none                                                                                               |
-| `--concurrency <n>`     | `2` tabs                                                                                           |
-| `--chrome-arg=<arg>`    | extra browser argument, repeatable; the `=` form is required for values starting with `-`          |
-
-The browser only loads the pages it is asked for: background networking, component updates, sync and pings are off.
-
-### On demand, with systemd
-
-`--listen systemd` and `--idle-exit` together make an instance that costs nothing until used: a `.socket` unit holds the listening socket, the first connection starts the service, and it exits after the idle period, to be started again by the next connection.
-
-```ini
-# searchcast.socket
-[Socket]
-ListenStream=/run/searchcast/searchcast.sock
-
-# searchcast.service
-[Service]
-ExecStart=/usr/bin/searchcast serve --listen systemd --idle-exit 600 --ephemeral --xvfb /usr/bin/Xvfb --recipes /etc/searchcast/recipes
-PrivateTmp=true
-```
+The main entry also exports `Browser`, `Page` and `CdpConnection` (the DevTools layer), `createSearchcastServer` (the HTTP API below, as a Node `http.Server`), and the recipe helpers `parseRecipe`, `loadRecipeFile`, `loadRecipes` and `RecipeError`.
 
 ## HTTP API
 
@@ -79,49 +56,48 @@ An empty list only comes back when the recipe's `empty` selector matched.
 
 ## Recipes
 
-The recipe format is shared with [serpcast](https://github.com/wighawag/serpcast), which runs the same recipes over plain HTTP with a browser fingerprint instead of a real browser. Both validate recipes with the [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe) package, so one recipe file describes a site for both. serpcast can only run `navigate` recipes; `form` recipes need searchcast.
+The recipe format and its validator are the [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe) package: see its README for every field. The same recipe file describes a site for this browser runner and for `searchcast`'s HTTP runner (which runs `navigate` recipes only; `form` recipes need a real browser). When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name.
 
-A recipe is a JSON file. When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name.
+## The `./cli` entry
 
-```json
-{
-	"name": "web",
-	"navigate": {"url": "https://search.example/?q={query}"},
-	"ready": "article.result a.title",
-	"empty": ".no-results",
-	"blocked": ["#captcha", ".challenge"],
-	"blockedUrl": ["/challenge"],
-	"results": {
-		"item": "article.result",
-		"fields": {
-			"title": {"selector": "a.title"},
-			"url": {"selector": "a.title", "attr": "href"},
-			"content": {"selector": ".snippet"}
-		}
-	},
-	"limit": 10,
-	"timeoutMs": 15000
-}
+```ts
+import {runCli} from '@searchcast/browser/cli';
+
+await runCli(['serve', '--recipes', './recipes', '--listen', '127.0.0.1:8931']);
 ```
 
-| Field            | Meaning                                                                                                                                                                                                                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `navigate.url`   | URL template; `{query}` becomes the URL-encoded query.                                                                                                                                                                                                                                |
-| `form`           | Instead of `navigate`: `{"url", "input", "submit"}`. Loads `url`, clicks `input`, replaces its value by typing the query key by key, then submits. `submit` is `"enter"` (default) or `{"click": "<selector>"}`.                                                                      |
-| `ready`          | Selector that means results are rendered.                                                                                                                                                                                                                                             |
-| `empty`          | Optional selector that means the site found nothing.                                                                                                                                                                                                                                  |
-| `blocked`        | Optional selectors that mean a challenge or block page.                                                                                                                                                                                                                               |
-| `blockedUrl`     | Optional regular expressions over the page URL that mean blocked.                                                                                                                                                                                                                     |
-| `results.item`   | Selector for each result.                                                                                                                                                                                                                                                             |
-| `results.fields` | Field name to `{selector?, attr?}`. `selector` is relative to the item (omitted: the item itself). `attr` omitted reads visible text; `href` and `src` resolve to absolute URLs. `title` and `url` are required; results missing either are skipped. Other fields are passed through. |
-| `limit`          | Maximum results, default 10.                                                                                                                                                                                                                                                          |
-| `timeoutMs`      | Per-query budget, default 15000.                                                                                                                                                                                                                                                      |
+`runCli(argv)` is the command line that the `searchcast` 0.1.x bin ran, as a function: `searchcast serve` and `searchcast browser-query` (the one-shot query that 0.1.x called `searchcast query`) from the `searchcast` package call it with their arguments unchanged. It writes errors as `searchcast: <message>` and exits the process with code 2 on a usage error; `serve` exits with 0 on SIGINT, SIGTERM or `--idle-exit`. Nothing runs on import. To run it as a service, install `searchcast` and `@searchcast/browser` side by side (`npm install -g searchcast @searchcast/browser`); the flags are the ones below.
 
-Exactly one of `navigate` and `form` must be set.
+| Option                  | Default                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `--listen <where>`      | `127.0.0.1:8931`; also `/path.sock`, or `systemd` for a socket passed by systemd socket activation |
+| `--idle-exit <seconds>` | never; exit after this long with no request in flight                                              |
+| `--chrome <path>`       | `$SEARCHCAST_CHROME`, then `PATH`                                                                  |
+| `--profile <dir>`       | `$XDG_STATE_HOME/searchcast/profile`                                                               |
+| `--ephemeral`           | off; use a fresh profile in a temporary directory, deleted on exit                                 |
+| `--xvfb <path>`         | none; run the browser on its own Xvfb display                                                      |
+| `--proxy <url>`         | none                                                                                               |
+| `--concurrency <n>`     | `2` tabs                                                                                           |
+| `--chrome-arg=<arg>`    | extra browser argument, repeatable; the `=` form is required for values starting with `-`          |
+
+### On demand, with systemd
+
+`--listen systemd` and `--idle-exit` together make an instance that costs nothing until used: a `.socket` unit holds the listening socket, the first connection starts the service, and it exits after the idle period, to be started again by the next connection.
+
+```ini
+# searchcast.socket
+[Socket]
+ListenStream=/run/searchcast/searchcast.sock
+
+# searchcast.service
+[Service]
+ExecStart=/usr/bin/searchcast serve --listen systemd --idle-exit 600 --ephemeral --xvfb /usr/bin/Xvfb --recipes /etc/searchcast/recipes
+PrivateTmp=true
+```
 
 ## SearXNG
 
-`integrations/searxng/searchcast.py` (shipped in the package) is a SearXNG engine that queries a searchcast socket, so searchcast results merge with SearXNG's other engines. SearXNG loads it from an absolute path, so nothing is copied into SearXNG itself:
+A SearXNG engine queries a `searchcast serve` socket, so its results merge with SearXNG's other engines. It ships in the `searchcast` package at `integrations/searxng/searchcast.py`, the same path as in `searchcast` 0.1.x, not in this package. SearXNG loads it from an absolute path, so nothing is copied into SearXNG itself:
 
 ```yaml
 engines:
@@ -134,21 +110,6 @@ engines:
 ```
 
 `socket_path` may reference environment variables (`$VAR`), so one settings file can serve several instances. A `blocked` answer raises SearXNG's CAPTCHA exception and any other failure an API exception, so both appear in `unresponsive_engines` rather than as missing results.
-
-## Library
-
-```ts
-import {Searchcast, loadRecipeFile} from 'searchcast';
-
-const searchcast = new Searchcast({
-	browser: {executable: '/usr/bin/chromium', userDataDir: './profile'},
-});
-const {results} = await searchcast.search(
-	loadRecipeFile('./recipes/web.json'),
-	'some query',
-);
-await searchcast.close();
-```
 
 ## Develop
 

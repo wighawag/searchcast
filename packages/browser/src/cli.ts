@@ -1,4 +1,13 @@
-#!/usr/bin/env node
+// The browser runner's command line, as a function: `runCli(argv)` takes what
+// the `searchcast` 0.1.x bin took after `node cli.js` (`serve ...` or a one-shot
+// query), with the same flags, defaults, messages, exit codes and signal
+// handling. The `searchcast` bin of the `searchcast` package calls it for
+// `searchcast serve` and `searchcast browser-query`; nothing runs on import.
+//
+// The one-shot query is spelled `browser-query` in the usage text (the
+// `searchcast` bin's `query` is the HTTP query now), and both `browser-query`
+// and `query` are accepted, so an argv written for the 0.1.x bin still works.
+// Decision recorded in work/notes/observations/2026-09-30-browser-library-package-decisions.md.
 import {mkdtempSync, rmSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -13,7 +22,7 @@ const USAGE = `searchcast: turn a web search form into a JSON API by driving a r
 
 Usage:
   searchcast serve --recipes <file|dir> [--recipes ...] [options]
-  searchcast query --recipe <file> [options] <query...>
+  searchcast browser-query --recipe <file> [options] <query...>
 
 Serve options:
   --listen <where>       host:port, /path.sock, or \`systemd\` for a socket passed by
@@ -134,7 +143,7 @@ async function main(argv: string[]): Promise<void> {
 	const searchcast = new Searchcast({browser, concurrency});
 	cleanups.push(() => searchcast.close());
 
-	if (command === 'query') {
+	if (command === 'query' || command === 'browser-query') {
 		if (!values.recipe) fail('query needs --recipe <file>');
 		const query = rest.join(' ').trim();
 		if (!query) fail('query needs a query');
@@ -194,8 +203,18 @@ async function main(argv: string[]): Promise<void> {
 	fail(`unknown command ${command}\n\n${USAGE}`);
 }
 
-main(process.argv.slice(2)).catch((e: unknown) => {
-	if (e instanceof RecipeError) fail(e.message);
-	if (e instanceof SearchcastError) fail(`${e.code}: ${e.message}`);
-	fail((e as Error).stack ?? String(e));
-});
+/**
+ * Run the browser runner's command line with `argv` (the arguments after the
+ * command name, e.g. `['serve', '--recipes', './recipes']`). Resolves once the
+ * command is running (`serve`: listening is under way) or done (`query`, help).
+ * On a usage or runtime error it writes `searchcast: <message>` to stderr and
+ * exits the process with code 2; `serve` exits with 0 on SIGINT, SIGTERM or
+ * `--idle-exit`, exactly as the `searchcast` 0.1.x bin did.
+ */
+export function runCli(argv: string[]): Promise<void> {
+	return main(argv).catch((e: unknown) => {
+		if (e instanceof RecipeError) fail(e.message);
+		if (e instanceof SearchcastError) fail(`${e.code}: ${e.message}`);
+		fail((e as Error).stack ?? String(e));
+	});
+}

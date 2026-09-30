@@ -242,7 +242,7 @@ Or copy the file next to your private recipes and load it from there. It calls t
 
 A browser engine runs a recipe in [searchcast](https://github.com/wighawag/searchcast), a real browser, so it has a real browser's fingerprint and runs the page's JavaScript. It is the heaviest engine, so it usually goes **last** in the chain, after the HTTP engines: it answers when they are blocked. It joins the chain like any engine (same failures and cooldowns); it has no serpcast session, since the browser keeps its own cookies in its profile. There are two modes.
 
-**Library mode**: serpcast runs searchcast in-process. `searchcast` is an optional peer dependency, imported only when a library-mode engine first runs (nothing else in serpcast imports it), so users of HTTP engines never install it or Chromium. Without it, the engine fails with a `transport` error saying `npm install searchcast`.
+**Library mode**: serpcast runs the browser runner in-process. `@searchcast/browser` (formerly published as `searchcast` 0.1.x) is an optional peer dependency, imported only when a library-mode engine first runs (nothing else in serpcast imports it), so users of HTTP engines never install it or Chromium. Without it, the engine fails with a `transport` error saying `npm install @searchcast/browser`.
 
 ```ts
 import {createSerpcast} from 'serpcast';
