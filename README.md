@@ -57,7 +57,7 @@ The command line stays on the `searchcast` bin: [`searchcast serve`](#serving-fr
 npm install -g searchcast @searchcast/browser
 ```
 
-Without it, `searchcast serve` exits with code 1 and one line saying to install it. The browser one-shot query that 0.1.x called `searchcast query` is now `searchcast browser-query` (`searchcast query` is the HTTP query), and the SearXNG engine stays at `integrations/searxng/searchcast.py` in the `searchcast` package. The command must come first (`searchcast serve --listen ...`, as every unit writes it): 0.1.x also took options before it.
+Without it, `searchcast serve` exits with code 1 and one line saying to install it. The browser one-shot query that 0.1.x called `searchcast query` is now `searchcast browser-query` (`searchcast query` is the HTTP query), and the SearXNG engine stays at `integrations/searxng/searchcast.py` in the `searchcast` package.
 
 ## Transport (libcurl-impersonate)
 

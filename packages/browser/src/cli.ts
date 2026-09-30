@@ -3,6 +3,8 @@
 // query), with the same flags, defaults, messages, exit codes and signal
 // handling. The `searchcast` bin of the `searchcast` package calls it for
 // `searchcast serve` and `searchcast browser-query`; nothing runs on import.
+// `browserCommand(argv)` tells that bin which command an argv names under this
+// runner's option table, so options may come before the command, as in 0.1.x.
 //
 // The one-shot query is spelled `browser-query` in the usage text (the
 // `searchcast` bin's `query` is the HTTP query now), and both `browser-query`
@@ -54,25 +56,28 @@ function defaultProfile(): string {
 	return join(state, 'searchcast', 'profile');
 }
 
+/** The browser runner's options: the one table, also behind {@link browserCommand}. */
+const OPTIONS = {
+	recipes: {type: 'string', multiple: true},
+	recipe: {type: 'string'},
+	listen: {type: 'string', default: '127.0.0.1:8931'},
+	chrome: {type: 'string'},
+	profile: {type: 'string'},
+	proxy: {type: 'string'},
+	headless: {type: 'boolean', default: false},
+	ephemeral: {type: 'boolean', default: false},
+	xvfb: {type: 'string'},
+	'idle-exit': {type: 'string'},
+	concurrency: {type: 'string', default: '2'},
+	'chrome-arg': {type: 'string', multiple: true},
+	help: {type: 'boolean', short: 'h'},
+} as const;
+
 async function main(argv: string[]): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: argv,
 		allowPositionals: true,
-		options: {
-			recipes: {type: 'string', multiple: true},
-			recipe: {type: 'string'},
-			listen: {type: 'string', default: '127.0.0.1:8931'},
-			chrome: {type: 'string'},
-			profile: {type: 'string'},
-			proxy: {type: 'string'},
-			headless: {type: 'boolean', default: false},
-			ephemeral: {type: 'boolean', default: false},
-			xvfb: {type: 'string'},
-			'idle-exit': {type: 'string'},
-			concurrency: {type: 'string', default: '2'},
-			'chrome-arg': {type: 'string', multiple: true},
-			help: {type: 'boolean', short: 'h'},
-		},
+		options: OPTIONS,
 	});
 	const [command, ...rest] = positionals;
 	if (values.help || !command) {
@@ -217,4 +222,22 @@ export function runCli(argv: string[]): Promise<void> {
 		if (e instanceof SearchcastError) fail(`${e.code}: ${e.message}`);
 		fail((e as Error).stack ?? String(e));
 	});
+}
+
+/**
+ * The command `runCli(argv)` would run: the first positional of `argv` under
+ * the browser runner's own options (so `['--listen', 'systemd', 'serve']`
+ * gives `'serve'`, the value of `--listen` being no command), or `undefined`
+ * when there is none or `argv` does not parse under those options. The
+ * command is not checked against the known ones. Runs nothing; the
+ * `searchcast` bin calls it to find `serve` or `browser-query` after options,
+ * as searchcast 0.1.x's bin accepted, without a copy of this option table.
+ */
+export function browserCommand(argv: string[]): string | undefined {
+	try {
+		return parseArgs({args: argv, allowPositionals: true, options: OPTIONS})
+			.positionals[0];
+	} catch {
+		return undefined;
+	}
 }

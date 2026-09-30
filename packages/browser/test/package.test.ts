@@ -64,9 +64,10 @@ describe('@searchcast/browser package', () => {
 		]);
 	});
 
-	it('exports runCli from the ./cli entry', () => {
-		expect(Object.keys(cliEntry)).toEqual(['runCli']);
+	it('exports runCli and browserCommand from the ./cli entry', () => {
+		expect(Object.keys(cliEntry).sort()).toEqual(['browserCommand', 'runCli']);
 		expect(typeof cliEntry.runCli).toBe('function');
+		expect(typeof cliEntry.browserCommand).toBe('function');
 	});
 
 	it('runs nothing when the built ./cli entry is imported', () => {
