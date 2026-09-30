@@ -26,7 +26,11 @@ import {
 	SearchcastError,
 	usage,
 } from './index.js';
-import {isBrowserCommand, runBrowserCli} from './browser-cli.js';
+import {
+	isBrowserCommand,
+	runBrowserCli,
+	runBrowserCliAfterOptions,
+} from './browser-cli.js';
 import {doctor, formatReport, healthy} from './doctor.js';
 import {InstallError, installLibcurl} from './install.js';
 import {installRecipes} from './install-recipes.js';
@@ -137,6 +141,7 @@ async function main(argv: string[]): Promise<void> {
 	// Before any parsing: the browser runner's flags are its own.
 	if (isBrowserCommand(argv)) return runBrowserCli(argv);
 	let parsed;
+	let parseError: Error | undefined;
 	try {
 		parsed = parseArgs({
 			args: argv,
@@ -154,8 +159,19 @@ async function main(argv: string[]): Promise<void> {
 			},
 		});
 	} catch (error) {
-		usageError((error as Error).message);
+		parseError = error as Error;
 	}
+	// Options before a browser command (`searchcast --ephemeral serve ...`), as
+	// 0.1.x accepted: only when argv names no HTTP command, so an HTTP command
+	// with options first (and a query whose text is `serve`) is unaffected.
+	if (
+		argv[0]?.startsWith('-') &&
+		!(parsed && Object.hasOwn(COMMANDS, parsed.positionals[0] ?? '')) &&
+		(await runBrowserCliAfterOptions(argv))
+	) {
+		return;
+	}
+	if (!parsed) usageError(parseError!.message);
 	const {values, positionals} = parsed;
 	const [command, ...rest] = positionals;
 	if (values.help || !command) {

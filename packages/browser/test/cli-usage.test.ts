@@ -12,6 +12,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {afterAll, describe, expect, it} from 'vitest';
+import {browserCommand} from '../src/cli.js';
 
 const cli = pathToFileURL(resolve(import.meta.dirname, '..', 'dist', 'cli.js'));
 // `node -e <script> -- <args>`: process.argv is [node, ...args].
@@ -129,5 +130,28 @@ describe('the CLI usage', () => {
 			'searchcast: no browser found: pass --chrome or set SEARCHCAST_CHROME\n',
 		);
 		expect(out.status).toBe(2);
+	});
+});
+
+// What the `searchcast` bin asks to find `serve` or `browser-query` after
+// options (`searchcast --ephemeral serve ...`), with this runner's own option
+// table: which options take a value decides what the first positional is.
+describe('browserCommand', () => {
+	it.each([
+		[['serve', '--recipes', 'r'], 'serve'],
+		[['--ephemeral', 'serve', '--recipes', 'r'], 'serve'],
+		[['--listen', 'systemd', 'serve'], 'serve'],
+		[['--headless', 'browser-query', '--recipe', 'r', 'q'], 'browser-query'],
+		[['--chrome-arg=--no-sandbox', '--recipes', 'serve', 'x'], 'x'],
+		[['--proxy', 'serve', 'query', 'q'], 'query'],
+		[['--headless'], undefined],
+		[[], undefined],
+	])('finds the command of %j', (argv, command) => {
+		expect(browserCommand(argv)).toBe(command);
+	});
+
+	it('is undefined when argv does not parse under the browser options', () => {
+		expect(browserCommand(['--libcurl', 'l', 'serve'])).toBeUndefined();
+		expect(browserCommand(['--ephemeral=yes', 'serve'])).toBeUndefined();
 	});
 });
