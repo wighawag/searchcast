@@ -18,6 +18,8 @@ The `searchcast` bin gains `serve` and `browser-query`. Both delegate to `@searc
 - The README gains the serve documentation from the browser package (options table, systemd socket activation example, SearXNG engine and its stable path, the Xvfb note), and the upgrade note: after upgrading, install `@searchcast/browser` next to `searchcast` and existing units work unchanged. The browser package README points there.
 - Changeset: `searchcast` minor noting `serve`/`browser-query`/the SearXNG path (it lands in the same 0.2.0).
 
+> FORWARD-NOTE (conductor, after #10): `runCli(argv)` from `@searchcast/browser/cli` already accepts `serve`, `browser-query` and `query`, and includes 0.1.2's top-level error handler; the `@searchcast/browser` `workspace:^` devDependency already exists in `packages/searchcast`. The browser package README still carries the serve docs (HTTP API, options table, systemd example) under its `./cli` section: move them to the root README here and leave a pointer. There is no TCP case in the CLI tests (the task text was wrong); keep every case that exists.
+
 ## Acceptance criteria
 
 - [ ] `searchcast serve` with every 0.1.2 flag works through the bin (the moved CLI tests pass in CI; every case still runs, none skipped by the move).
