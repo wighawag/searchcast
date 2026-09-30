@@ -1,7 +1,12 @@
 // `searchcast doctor`, and `searchcast query` after `searchcast install-libcurl`. The
 // first block needs no native library; the second runs only with
 // SEARCHCAST_LIBCURL_PATH (see test/native-notice.ts). Every data directory is a
-// temp dir, and the real one is checked untouched.
+// temp dir, and the real one is checked untouched. The platform packages linked
+// in this workspace (whose linux-x64 library CI builds) are hidden, in process
+// and in CLI runs: the library is loaded once per process, so an in-process
+// doctor that found the platform package's library would make the native tests'
+// explicit LIB path refused. The platform-package lookup is tested in
+// platform-package.test.ts and platform-package-native.test.ts.
 
 import {execFile} from 'node:child_process';
 import {
@@ -17,7 +22,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {doctor, formatReport, healthy} from '../src/doctor.js';
 import {libraryFileName, oldDataDirHits} from '../src/index.js';
 import {installLibcurl} from '../src/install.js';
@@ -33,6 +38,12 @@ import {
 } from './release.js';
 import {CA_PATH, startConnectProxy, startH2Server} from './servers.js';
 import {HIDE_ARGS, hideEnv} from './platform-packages.js';
+
+vi.mock('node:module', async (original) =>
+	(await import('./hide-platform-packages.js')).hidingPlatformPackages(
+		await original<typeof import('node:module')>(),
+	),
+);
 
 const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -204,6 +215,8 @@ describe('searchcast doctor and the old serpcast names (no native library needed
 	it('says nothing about the old directory when it is absent or has nothing the new one lacks', async () => {
 		expect(oldDataDirHits(env)).toBeUndefined();
 		const report = await doctor({env});
+		// Nothing found, so nothing loaded (the native tests below load LIB).
+		expect(report.library).toBeUndefined();
 		expect(report.oldDataDir).toBeUndefined();
 		expect(formatReport(report)).not.toMatch(/old data dir|move with/);
 	});
@@ -257,7 +270,7 @@ describe.skipIf(!LIB)('searchcast doctor (native libcurl-impersonate)', () => {
 				echoUrl: `https://localhost:${echo.port}/json`,
 				caPath: CA_PATH,
 			});
-			expect(report.impersonating).toBe(true);
+			expect(report.impersonating, report.problem).toBe(true);
 			expect(report.remote).toEqual({
 				url: `https://localhost:${echo.port}/json`,
 				seen: {
