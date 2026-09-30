@@ -20,6 +20,8 @@ Make the repo's two workflows describe and guard the monorepo as it now is.
 
 > FORWARD-NOTE (conductor, freshness check after #14): partial pack checks already exist: `packages/searchcast/test/pack.test.ts` (npm pack --dry-run --json --ignore-scripts; asserts the SearXNG file path), `packages/recipe/test/package.test.ts` and `packages/browser/test/package.test.ts` (manifest shape). Build the repo-wide pack check on the same technique and fold or reference these rather than adding a third style. `@searchcast/browser` now also exports `browserCommand` from `./cli`.
 
+> RETRY HANDOFF (conductor, after PR #15 was blocked): the first attempt (branch `work/task-monorepo-ci-and-release`, PR #15, closed) was right except that CI failed on the new no-skip guard: the no-loopback case of `packages/searchcast/test/serve.test.ts` is skipped on the runner because `unshare -Un --map-current-user true` fails there (Ubuntu 24 AppArmor restricts unprivileged user namespaces; the same restriction is why Chrome gets `--no-sandbox`). It was skipped before #15 too; the earlier forward-note wrongly named the Xvfb case. Fix it in `test.yml` with a commented step before the tests that lifts the restriction for the job (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`), keep `ALLOWED_SKIPS` empty, and keep `--no-sandbox` for Chrome as is (out of scope). Build on that branch rather than starting over.
+
 ## Acceptance criteria
 
 - [ ] CI runs every suite (no suite silently skipped in CI: the job fails if the native or browser tests would be skipped, for example by requiring their env there).
