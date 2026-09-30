@@ -1,3 +1,0 @@
-# @searchcast/browser ships source maps whose sources are not in the tarball (2026-09-30)
-
-Seen while building `monorepo-ci-and-release`: `packages/browser/tsconfig.json` sets `sourceMap` and `declarationMap` (it does not extend `tsconfig.base.json`, whose comment says packages ship no maps because `src/` is not published), so the `@searchcast/browser` tarball carries 20 `dist/*.map` files pointing at `src/`, which it does not ship. The pack check (`scripts/pack-check.mjs`, `DIST_FILES`) accepts `.map` files so as not to change that package here; dropping the maps (or extending the base config) is a separate decision.

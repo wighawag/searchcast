@@ -113,6 +113,20 @@ describe('pack check', () => {
 		expect(ok).toBe(false);
 	}, 60_000);
 
+	it('fails on a source map in the tarball: its sources are not published', () => {
+		const root = repoWith('maps', {
+			'dist/index.js.map': '{}\n',
+			'dist/index.d.ts.map': '{}\n',
+		});
+		const {ok, lines} = checkAll(root, [entry('maps')]);
+		expect(lines).toEqual([
+			'pack-check: maps (packages/maps):',
+			'  unexpected file in the tarball: dist/index.d.ts.map',
+			'  unexpected file in the tarball: dist/index.js.map',
+		]);
+		expect(ok).toBe(false);
+	}, 60_000);
+
 	it('fails on a missing extra file, and on no dist output', () => {
 		const root = repoWith('bare', {
 			'dist/index.js': null,
@@ -124,7 +138,7 @@ describe('pack check', () => {
 		expect(lines).toEqual([
 			'pack-check: bare (packages/bare):',
 			'  integrations/searxng/searchcast.py is not in the tarball',
-			'  no packed file matches /^dist\\/.+\\.(js|d\\.ts)(\\.map)?$/',
+			'  no packed file matches /^dist\\/.+\\.(js|d\\.ts)$/',
 		]);
 		expect(ok).toBe(false);
 	}, 60_000);

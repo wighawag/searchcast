@@ -43,8 +43,12 @@ import {
 	payloadFile,
 } from './libcurl-packages.mjs';
 
-/** The compiled output: JavaScript, declarations and their source maps. */
-export const DIST_FILES = /^dist\/.+\.(js|d\.ts)(\.map)?$/;
+/**
+ * The compiled output: JavaScript and declarations. No source or declaration
+ * maps: packages ship only dist/, not src/, so a map would point at files the
+ * tarball does not contain (see tsconfig.base.json).
+ */
+export const DIST_FILES = /^dist\/.+\.(js|d\.ts)$/;
 
 /** Files every tarball has. */
 export const ALWAYS = ['CHANGELOG.md', 'LICENSE', 'README.md', 'package.json'];

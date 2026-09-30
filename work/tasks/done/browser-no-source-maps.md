@@ -37,3 +37,10 @@ FIRST, check this task against current reality (launch snapshot; may have drifte
 - No em dashes anywhere (code, comments, docs, changesets). Do not hard-wrap Markdown paragraphs.
 - Bound shell commands (`timeout`), cap output, and never grep `node_modules`, `dist` or `.git`.
 - The local gate skips the native tests (no libcurl-impersonate here) and the browser tests (no Chrome); CI runs both. Keep the skip messages, and do not weaken a test to make it pass locally.
+
+## Decisions
+
+These are recorded in `work/notes/observations/2026-09-30-browser-no-source-maps-decisions.md`; please link it from the done record.
+1. **No changeset.** The pending `@searchcast/browser` minor changeset already covers its first release (0.1.0), and no version with maps was ever published. A patch changeset would still plan 0.1.0 and would only add a changelog line about a problem no user ever saw.
+2. **Only `lib` is kept on top of the base config.** `dom` is needed for the build. I left `dom.iterable` in place because removing it would change type-checking, which is outside this task.
+3. **The `.map` ban applies to every package** through the shared `DIST_FILES` pattern, as the task asked.
