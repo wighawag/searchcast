@@ -2,13 +2,13 @@
 // library: reuseConnections (one connection per request when false, counted
 // like connection-reuse.test.ts), idlePollMs, maxRequestBodyBytes,
 // preflightCache and maxPreflightAgeS. Needs libcurl-impersonate
-// (SERPCAST_LIBCURL_PATH); skipped without it.
+// (SEARCHCAST_LIBCURL_PATH); skipped without it.
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {createTransport, type TransportOptions} from '../src/index.js';
 import {CA_PATH, startH2Server, type H2Server} from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 
 /** Wait (up to 2 s) until the server has exactly `n` connections open; then how many it has. */
 async function openSettles(server: H2Server, n: number): Promise<number> {

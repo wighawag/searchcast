@@ -1,9 +1,9 @@
-// The searchcast side of browser engines (browser.ts): endpoint mode's HTTP
+// The browser-runner side of browser engines (browser.ts): endpoint mode's HTTP
 // client for a running `searchcast serve` (TCP URL or Unix socket path), and
-// the mapping of searchcast's answers and error codes, shared with library
+// the mapping of the browser runner's answers and error codes, shared with library
 // mode. The endpoint request goes straight to the endpoint, never through
-// serpcast's proxy: it is the caller's local service, and the browser behind
-// it has its own egress, which serpcast does not control.
+// searchcast's proxy: it is the caller's local service, and the browser behind
+// it has its own egress, which searchcast does not control.
 
 import {
 	request as httpRequest,
@@ -13,16 +13,16 @@ import {
 import {request as httpsRequest} from 'node:https';
 import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import {normalizeResult, type SearchResult} from './declarative.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import {checkNumber} from './options.js';
 
-/** A searchcast error code (HTTP `error` field or thrown `code`) as a serpcast error. */
+/** A browser runner error code (HTTP `error` field or thrown `code`) as a searchcast error. */
 export function searchcastError(
 	engine: string,
 	code: unknown,
 	message: string,
 	cause?: unknown,
-): SerpcastError {
+): SearchcastError {
 	const kind =
 		code === 'blocked' || code === 'recipe' || code === 'timeout'
 			? code
@@ -30,15 +30,19 @@ export function searchcastError(
 				? 'recipe'
 				: 'transport';
 	const label = typeof code === 'string' ? code : 'error';
-	return new SerpcastError(kind, `${engine}: searchcast ${label}: ${message}`, {
-		cause,
-	});
+	return new SearchcastError(
+		kind,
+		`${engine}: searchcast ${label}: ${message}`,
+		{
+			cause,
+		},
+	);
 }
 
 /** Largest endpoint answer accepted by default, in bytes (the endpoint's `maxBodyBytes`). */
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 
-/** `GET /search?recipe=&q=` on a running `searchcast serve`, as serpcast results or a `SerpcastError`. */
+/** `GET /search?recipe=&q=` on a running `searchcast serve`, as results or a `SearchcastError`. */
 export async function searchEndpoint(
 	name: string,
 	target: {
@@ -62,9 +66,9 @@ export async function searchEndpoint(
 			MAX_BODY_BYTES;
 	} catch (cause) {
 		// A misconfigured engine, as for an unknown recipe name.
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
-			`${name}: searchcast endpoint ${(cause as Error).message.replace(/^serpcast: /, '')}`,
+			`${name}: searchcast endpoint ${(cause as Error).message.replace(/^searchcast: /, '')}`,
 			{cause},
 		);
 	}
@@ -76,12 +80,12 @@ export async function searchEndpoint(
 	} catch (error) {
 		if (signal?.aborted) throw signal.reason;
 		if (timer.aborted)
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'timeout',
 				`${name}: searchcast did not answer within ${timeoutMs} ms`,
 			);
-		if (error instanceof SerpcastError) throw error;
-		throw new SerpcastError(
+		if (error instanceof SearchcastError) throw error;
+		throw new SearchcastError(
 			'transport',
 			`${name}: cannot reach searchcast at ${target.endpoint} (${String(error)})`,
 			{cause: error},
@@ -91,7 +95,7 @@ export async function searchEndpoint(
 	try {
 		body = JSON.parse(answer.body) as typeof body;
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'transport',
 			`${name}: searchcast answered HTTP ${answer.status} with a body that is not JSON`,
 			{cause},
@@ -121,7 +125,7 @@ function get(
 		const url = new URL(base);
 		if (url.protocol === 'https:') send = httpsRequest;
 		else if (url.protocol !== 'http:')
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'recipe',
 				`searchcast endpoint ${base}: not an http(s) URL or a socket path`,
 			);
@@ -158,10 +162,10 @@ function get(
 	});
 }
 
-/** searchcast's results (library or HTTP) as serpcast results, or a `transport` error. */
+/** The browser runner's results (library or HTTP) as search results, or a `transport` error. */
 export function searchcastResults(name: string, list: unknown): SearchResult[] {
 	const bad = (why: string) =>
-		new SerpcastError(
+		new SearchcastError(
 			'transport',
 			`${name}: malformed searchcast answer, ${why}`,
 		);

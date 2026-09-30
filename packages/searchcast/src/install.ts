@@ -1,20 +1,23 @@
-// `serpcast install-libcurl`: the ONLY code in serpcast that downloads the
+// `searchcast install-libcurl`: the ONLY code in searchcast that downloads the
 // native library, and it runs only when the user invokes that command or an
-// embedder calls `installLibcurl` from `serpcast/install` (ADR 0002; imported
+// embedder calls `installLibcurl` from `searchcast/install` (ADR 0002; imported
 // by cli.ts and install-api.ts, never reachable from the main entry). It
 // fetches the archive LIBCURL_IMPERSONATE pins for this platform (the same
 // constant CI installs from), through the caller's proxy only, verifies its
 // sha256 BEFORE writing anything, takes the one library file out of the
 // archive and puts it in the data directory under `libraryFileName()`, where
-// `resolveLibraryPath` finds it. A file already there is left alone when it is
-// identical, and replaced only with `force` when it differs. The write is a
+// `resolveLibraryPath` finds it. It writes only to searchcast's data
+// directory, never to serpcast's old one (which it does not even read: a
+// library there is not "already installed"; ADR 0005). A file already there
+// is left alone when it is identical, and replaced only with `force` when it
+// differs. The write is a
 // rename of a temporary file in the same directory, so a failure leaves either
 // the old file or nothing, never a partial library.
 //
 // The size caps (MAX_ARCHIVE_BYTES, MAX_UNPACKED_BYTES) are safety ceilings:
 // an embedder may LOWER them (`maxArchiveBytes`, `maxUnpackedBytes`), never
 // raise them. The idle timeout stays internal. Exported to embedders through
-// `serpcast/install` (install-api.ts), never from the main entry.
+// `searchcast/install` (install-api.ts), never from the main entry.
 
 import {createHash} from 'node:crypto';
 import {
@@ -27,7 +30,8 @@ import {
 } from 'node:fs';
 import {join} from 'node:path';
 import {describeProxy, download} from './download.js';
-import {dataDir, LIBCURL_IMPERSONATE, libraryFileName} from './libcurl.js';
+import {dataDir, libraryFileName} from './data-dir.js';
+import {LIBCURL_IMPERSONATE} from './libcurl.js';
 import {checkNumber} from './options.js';
 import {readTarGz, type TarEntry} from './tar.js';
 
@@ -96,7 +100,7 @@ export async function installLibcurl(
 	const asset = release.assets[platform];
 	if (!asset) {
 		throw new InstallError(
-			`no pinned libcurl-impersonate ${release.version} archive for ${platform} (pinned: ${Object.keys(release.assets).join(', ')}). Install libcurl-impersonate yourself and set SERPCAST_LIBCURL_PATH to it.`,
+			`no pinned libcurl-impersonate ${release.version} archive for ${platform} (pinned: ${Object.keys(release.assets).join(', ')}). Install libcurl-impersonate yourself and set SEARCHCAST_LIBCURL_PATH to it.`,
 		);
 	}
 	const url = release.baseUrl + asset.archive;

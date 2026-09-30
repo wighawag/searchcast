@@ -20,14 +20,17 @@ import {
 	dataDir,
 	LIBCURL_IMPERSONATE,
 	libraryFileName,
+	oldDataDir,
 	resolveLibraryPath,
 } from '../src/index.js';
+import {locateLibrary} from '../src/libcurl.js';
 import {startH2Server} from './servers.js';
 
 const ENV_KEYS = [
 	'HOME',
 	'XDG_DATA_HOME',
 	'XDG_CACHE_HOME',
+	'SEARCHCAST_LIBCURL_PATH',
 	'SERPCAST_LIBCURL_PATH',
 	'LIBCURL_PATH',
 ];
@@ -57,31 +60,80 @@ describe('pinned libcurl-impersonate release', () => {
 describe('resolveLibraryPath', () => {
 	let tmp: string;
 	beforeEach(() => {
-		tmp = mkdtempSync(join(tmpdir(), 'serpcast-resolve-'));
+		tmp = mkdtempSync(join(tmpdir(), 'searchcast-resolve-'));
 	});
 	afterEach(() => rmSync(tmp, {recursive: true, force: true}));
 
-	it('prefers the option, then SERPCAST_LIBCURL_PATH, then LIBCURL_PATH, then the data dir', () => {
+	/** A library file in `$XDG_DATA_HOME/<name>` of the temp dir. */
+	const install = (name: string) => {
+		mkdirSync(join(tmp, name), {recursive: true});
+		const path = join(tmp, name, libraryFileName());
+		writeFileSync(path, '');
+		return path;
+	};
+
+	it('tries the option, SEARCHCAST_LIBCURL_PATH, SERPCAST_LIBCURL_PATH, LIBCURL_PATH, the data dir, then the old one', () => {
+		const newer = install('searchcast');
+		const older = install('serpcast');
 		const env = {
 			XDG_DATA_HOME: tmp,
-			SERPCAST_LIBCURL_PATH: '/a.so',
+			SEARCHCAST_LIBCURL_PATH: '/new.so',
+			SERPCAST_LIBCURL_PATH: '/old.so',
 			LIBCURL_PATH: '/b.so',
 		};
-		expect(resolveLibraryPath('/opt.so', env)).toBe('/opt.so');
-		expect(resolveLibraryPath(undefined, env)).toBe('/a.so');
-		expect(
-			resolveLibraryPath(undefined, {...env, SERPCAST_LIBCURL_PATH: ''}),
-		).toBe('/b.so');
+		const steps: [NodeJS.ProcessEnv, string | undefined, string, string][] = [
+			[env, '/opt.so', '/opt.so', 'option'],
+			[env, undefined, '/new.so', 'SEARCHCAST_LIBCURL_PATH'],
+			[
+				{...env, SEARCHCAST_LIBCURL_PATH: ''},
+				undefined,
+				'/old.so',
+				'SERPCAST_LIBCURL_PATH',
+			],
+			[
+				{XDG_DATA_HOME: tmp, LIBCURL_PATH: '/b.so'},
+				undefined,
+				'/b.so',
+				'LIBCURL_PATH',
+			],
+			[{XDG_DATA_HOME: tmp}, undefined, newer, 'data directory'],
+		];
+		for (const [stepEnv, option, path, source] of steps) {
+			expect(locateLibrary(option, stepEnv), source).toEqual({path, source});
+			expect(resolveLibraryPath(option, stepEnv)).toBe(path);
+		}
+		rmSync(newer);
+		expect(locateLibrary(undefined, {XDG_DATA_HOME: tmp})).toEqual({
+			path: older,
+			source: 'old data directory',
+		});
+		rmSync(older);
 		expect(resolveLibraryPath(undefined, {XDG_DATA_HOME: tmp})).toBeUndefined();
-		const installed = join(tmp, 'serpcast', libraryFileName());
-		mkdirSync(join(tmp, 'serpcast'));
-		writeFileSync(installed, '');
-		expect(resolveLibraryPath(undefined, {XDG_DATA_HOME: tmp})).toBe(installed);
 	});
 
-	it('puts the data dir under XDG_DATA_HOME, else ~/.local/share', () => {
-		expect(dataDir({XDG_DATA_HOME: '/x'})).toBe('/x/serpcast');
-		expect(dataDir({})).toBe(join(homedir(), '.local', 'share', 'serpcast'));
+	it('reads the old SERPCAST_LIBCURL_PATH when it is the only one set', () => {
+		expect(
+			locateLibrary(undefined, {
+				XDG_DATA_HOME: tmp,
+				SERPCAST_LIBCURL_PATH: '/old.so',
+			}),
+		).toEqual({path: '/old.so', source: 'SERPCAST_LIBCURL_PATH'});
+	});
+
+	it('reads the old data directory only when the new one has no library', () => {
+		const older = install('serpcast');
+		expect(resolveLibraryPath(undefined, {XDG_DATA_HOME: tmp})).toBe(older);
+		mkdirSync(join(tmp, 'searchcast')); // an empty new directory changes nothing
+		expect(resolveLibraryPath(undefined, {XDG_DATA_HOME: tmp})).toBe(older);
+		const newer = install('searchcast');
+		expect(resolveLibraryPath(undefined, {XDG_DATA_HOME: tmp})).toBe(newer);
+	});
+
+	it('puts the data dir under XDG_DATA_HOME, else ~/.local/share, and the old one beside it', () => {
+		expect(dataDir({XDG_DATA_HOME: '/x'})).toBe('/x/searchcast');
+		expect(dataDir({})).toBe(join(homedir(), '.local', 'share', 'searchcast'));
+		expect(oldDataDir({XDG_DATA_HOME: '/x'})).toBe('/x/serpcast');
+		expect(oldDataDir({})).toBe(join(homedir(), '.local', 'share', 'serpcast'));
 	});
 });
 
@@ -89,10 +141,14 @@ describe('with no library available', () => {
 	const saved: Record<string, string | undefined> = {};
 	const realHome = homedir();
 	const realDirs = [
+		join(realHome, '.local', 'share', 'searchcast'),
 		join(realHome, '.local', 'share', 'serpcast'),
 		join(realHome, '.cache', 'impers'),
 		...(process.env.XDG_DATA_HOME
-			? [join(process.env.XDG_DATA_HOME, 'serpcast')]
+			? [
+					join(process.env.XDG_DATA_HOME, 'searchcast'),
+					join(process.env.XDG_DATA_HOME, 'serpcast'),
+				]
 			: []),
 		...(process.env.XDG_CACHE_HOME
 			? [join(process.env.XDG_CACHE_HOME, 'impers')]
@@ -105,8 +161,9 @@ describe('with no library available', () => {
 
 	beforeEach(() => {
 		before = snapshot();
-		tmp = mkdtempSync(join(tmpdir(), 'serpcast-home-'));
+		tmp = mkdtempSync(join(tmpdir(), 'searchcast-home-'));
 		for (const key of ENV_KEYS) saved[key] = process.env[key];
+		delete process.env.SEARCHCAST_LIBCURL_PATH;
 		delete process.env.SERPCAST_LIBCURL_PATH;
 		delete process.env.LIBCURL_PATH;
 		process.env.HOME = tmp;
@@ -132,8 +189,8 @@ describe('with no library available', () => {
 				.request(`https://localhost:${server.port}/`, {kind: 'document'})
 				.catch((e: unknown) => e);
 			expect(error).toMatchObject({kind: 'impersonation'});
-			expect((error as Error).message).toMatch(/serpcast install-libcurl/);
-			expect((error as Error).message).toMatch(/SERPCAST_LIBCURL_PATH/);
+			expect((error as Error).message).toMatch(/searchcast install-libcurl/);
+			expect((error as Error).message).toMatch(/SEARCHCAST_LIBCURL_PATH/);
 			expect(server.connections).toBe(0);
 		} finally {
 			await server.close();

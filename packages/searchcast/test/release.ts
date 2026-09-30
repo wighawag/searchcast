@@ -1,9 +1,9 @@
-// Test helpers for `serpcast install-libcurl`: a .tar.gz builder, a local
+// Test helpers for `searchcast install-libcurl`: a .tar.gz builder, a local
 // server standing in for the release host (with redirects, like GitHub's), and
 // a pinned release pointing at it. Nothing here touches the network.
 
 import {createHash} from 'node:crypto';
-import {existsSync, statSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import http from 'node:http';
 import type {AddressInfo} from 'node:net';
 import {homedir} from 'node:os';
@@ -120,16 +120,18 @@ export function release(baseUrl: string, checksum: string): Release {
 
 /**
  * The real data directories this user has (from the environment the tests
- * started in), with their mtimes: compare before and after to show the tests
- * left them untouched.
+ * started in), searchcast's and serpcast's old one, with their mtimes: compare
+ * before and after to show the tests left them untouched.
  */
 export function realDataDirs(): () => unknown[] {
-	const dirs = [
-		join(homedir(), '.local', 'share', 'serpcast'),
-		...(process.env.XDG_DATA_HOME
-			? [join(process.env.XDG_DATA_HOME, 'serpcast')]
-			: []),
+	const roots = [
+		join(homedir(), '.local', 'share'),
+		...(process.env.XDG_DATA_HOME ? [process.env.XDG_DATA_HOME] : []),
 	];
+	const dirs = roots.flatMap((root) => [
+		join(root, 'searchcast'),
+		join(root, 'serpcast'),
+	]);
 	const files = dirs.flatMap((d) => [
 		d,
 		join(d, 'libcurl-impersonate.so'),
@@ -137,4 +139,20 @@ export function realDataDirs(): () => unknown[] {
 	]);
 	return () =>
 		files.map((f) => (existsSync(f) ? statSync(f).mtimeMs : 'absent'));
+}
+
+/**
+ * Every entry under `dir` with its content (files) or `dir/` (directories),
+ * sorted: equal before and after shows nothing was written, moved or removed.
+ */
+export function tree(dir: string): string[] {
+	if (!existsSync(dir)) return [];
+	return readdirSync(dir, {recursive: true, encoding: 'utf8'})
+		.sort()
+		.map((entry) => {
+			const path = join(dir, entry);
+			return statSync(path).isDirectory()
+				? `${entry}/`
+				: `${entry}: ${readFileSync(path, 'latin1')}`;
+		});
 }

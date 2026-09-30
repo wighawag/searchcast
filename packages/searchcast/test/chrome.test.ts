@@ -10,7 +10,7 @@ import {
 	CHROME_MAJOR,
 	headerTable,
 	IMPERSONATE_TARGET,
-	SerpcastError,
+	SearchcastError,
 } from '../src/index.js';
 
 const UA =
@@ -141,14 +141,14 @@ describe('header tables (Chrome 146, Linux; the finding impers-fingerprint-vs-cu
 					return e;
 				}
 			})();
-			expect(error).toBeInstanceOf(SerpcastError);
+			expect(error).toBeInstanceOf(SearchcastError);
 			expect(error).toMatchObject({kind: 'recipe'});
 		}
 	});
 });
 
 // work/notes/findings/sec-fetch-site-by-initiator.md: from the page
-// https://www.example.com:39383/page?q=x, credentialed (as serpcast always is).
+// https://www.example.com:39383/page?q=x, credentialed (as searchcast always is).
 describe('same-site and cross-site tables (the finding sec-fetch-site-by-initiator)', () => {
 	const PAGE = 'https://www.example.com:39383/page?q=x';
 	const HINTS: [string, string][] = [
@@ -308,7 +308,7 @@ describe('same-site and cross-site tables (the finding sec-fetch-site-by-initiat
 			() => headerTable('fetch', {referer: '/page', url: 'https://x.test/'}),
 		];
 		for (const attempt of attempts) {
-			expect(attempt).toThrow(SerpcastError);
+			expect(attempt).toThrow(SearchcastError);
 			try {
 				attempt();
 			} catch (error) {

@@ -1,6 +1,6 @@
-# serpcast
+# searchcast
 
-serpcast runs keyless search engines, described by recipes, over HTTP with a real browser's fingerprint, and chains them with a real-browser fallback (searchcast). It supplies the mechanism; the caller supplies every policy (egress, state, which recipes), see `docs/adr/0002`.
+searchcast runs keyless search engines, described by recipes, over HTTP with a real browser's fingerprint, and chains them with a real-browser fallback (the browser runner, `@searchcast/browser`). It supplies the mechanism; the caller supplies every policy (egress, state, which recipes), see `docs/adr/0002`. It was called serpcast until 0.2.0 (renames and their one-release fallbacks: `docs/adr/0005`).
 
 ## Language
 
@@ -11,7 +11,7 @@ A description of how to get search results from one site. Either a declarative r
 _Avoid_: adapter, scraper, plugin
 
 **Declarative recipe**:
-A JSON recipe in the shared `serpcast-recipe` schema (URL template, ready/empty/blocked selectors, result fields). The same file runs over HTTP in serpcast and in a real browser in searchcast.
+A JSON recipe in the shared `@searchcast/recipe` schema (URL template, ready/empty/blocked selectors, result fields). The same file runs over HTTP in searchcast and in a real browser in the browser runner.
 _Avoid_: JSON engine, config
 
 **Code recipe**:
@@ -23,8 +23,12 @@ One entry in an engine chain: a declarative recipe, a code recipe or a browser e
 _Avoid_: backend, provider
 
 **Browser engine**:
-A searchcast recipe run by searchcast in a real browser (in-process or over its socket). The fallback when HTTP is blocked.
+A recipe run in a real browser by the browser runner (`@searchcast/browser` in-process, or a `searchcast serve` over its socket). The fallback when HTTP is blocked.
 _Avoid_: headless engine
+
+**Browser runner**:
+`@searchcast/browser`, the library that runs a recipe in a real browser (published as the `searchcast` package 0.1.x before ADR 0005); `searchcast serve` is its command line.
+_Avoid_: searchcast (that is the HTTP package), headless runner
 
 **Engine chain**:
 The ordered list of engines one search tries, stopping at the first answer (results, or an `empty` match); earlier failures are reported with it.
@@ -41,7 +45,7 @@ The one explicit Chrome version libcurl-impersonate reproduces at the TLS/HTTP2 
 _Avoid_: profile, browser alias
 
 **Header table**:
-The exact request headers (names, values, order) that the pinned Chrome sends for one request kind. The only headers serpcast sends; the library's own defaults are off.
+The exact request headers (names, values, order) that the pinned Chrome sends for one request kind. The only headers searchcast sends; the library's own defaults are off.
 _Avoid_: default headers, user agent
 
 **Request kind**:
@@ -49,7 +53,7 @@ What a request is, from the browser's point of view, which selects its header ta
 _Avoid_: request type, mode
 
 **Preflight**:
-The CORS `OPTIONS` request Chrome sends before a fetch POST to another origin whose `content-type` is not CORS-safelisted (such as `application/json`). serpcast sends it too, as captured: credential-less, on the transport session's credential-less connections, remembered for its `access-control-max-age` (capped by `maxPreflightAgeS`; not at all with `preflightCache: false`). If it does not allow the POST, the POST is not sent.
+The CORS `OPTIONS` request Chrome sends before a fetch POST to another origin whose `content-type` is not CORS-safelisted (such as `application/json`). searchcast sends it too, as captured: credential-less, on the transport session's credential-less connections, remembered for its `access-control-max-age` (capped by `maxPreflightAgeS`; not at all with `preflightCache: false`). If it does not allow the POST, the POST is not sent.
 _Avoid_: OPTIONS check, CORS probe
 
 **Fetch site**:
@@ -63,7 +67,7 @@ _Avoid_: safe mode
 ### State
 
 **State store**:
-The caller-injected async key/value store with per-key expiry that holds sessions and cooldowns, namespaced per engine. The default is in-memory; serpcast ships no disk store.
+The caller-injected async key/value store with per-key expiry that holds sessions and cooldowns, namespaced per engine. The default is in-memory; searchcast ships no disk store. Its index key `serpcast/sessions` keeps serpcast's name on purpose (ADR 0005).
 _Avoid_: cache, database
 
 **Session**:
@@ -78,9 +82,17 @@ _Avoid_: cookie jar, client
 The period during which an engine that answered `blocked` is skipped by the engine chain.
 _Avoid_: backoff, ban
 
+**Data directory**:
+`$XDG_DATA_HOME/searchcast` (default `~/.local/share/searchcast`): where `searchcast install-libcurl` puts the library and `searchcast install-recipes` puts recipe sets, only when the user types those commands (or an embedder calls the installers of `searchcast/install`). Nothing else writes there.
+_Avoid_: cache, config dir
+
+**Old data directory**:
+serpcast's data directory, `$XDG_DATA_HOME/serpcast`, read for one release (0.2.x) when the data directory lacks an item (the library file, a recipe set by name). Never written, never moved: `searchcast doctor` names what is read from it and prints the `mv` command the user can run.
+_Avoid_: legacy directory, migration
+
 ### Errors
 
-Every failure is a `SerpcastError` with a `kind`. An empty result list is never an error and only comes from a recipe's `empty` selector.
+Every failure is a `SearchcastError` (serpcast's name `SerpcastError` is a deprecated alias for one release) with a `kind`. An empty result list is never an error and only comes from a recipe's `empty` selector.
 
 **`blocked`**:
 The site refused or challenged the request (HTTP 202/403/429, a `blocked` selector match, or a `blockedUrl` match after redirects). Starts a cooldown.

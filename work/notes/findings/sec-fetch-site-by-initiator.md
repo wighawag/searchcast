@@ -3,6 +3,7 @@ title: Chromium's headers for same-site and cross-site subresources (script, fet
 slug: sec-fetch-site-by-initiator
 source: 'captured 2026-09-29 (UTC ~18:45-19:00) with a net-log of nixpkgs Chromium 152.0.7977.82 (/nix/store/33pxss8h71cl7vmfpy21bidsw0lj1g8q-chromium-152.0.7977.82, Linux x64, headless=new, fresh profile) against LOCAL servers only: two Node 24.19.0 HTTP/2 TLS servers and one plain HTTP server on 127.0.0.1, every host name mapped there with --host-resolver-rules="MAP * 127.0.0.1", a self-signed certificate plus --ignore-certificate-errors. No third-party site was contacted. Single host, single day, one Chromium version: re-measure when the pinned Chrome moves.'
 ---
+> Names changed since this was written, see [ADR 0005](../../../docs/adr/0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md): read "serpcast" here as `searchcast`, "serpcast-recipe" as `@searchcast/recipe`, and "searchcast" (the browser runner) as `@searchcast/browser`.
 
 # Chromium's headers for same-site and cross-site subresources (script, fetch)
 

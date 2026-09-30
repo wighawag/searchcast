@@ -1,4 +1,4 @@
-// A plain GET of one file, for `serpcast install-libcurl` only (src/install.ts
+// A plain GET of one file, for `searchcast install-libcurl` only (src/install.ts
 // is its one importer): the library being installed cannot download itself, so
 // this uses Node's own http and tls. Egress is the caller's `proxy` and nothing
 // else: `http://` (CONNECT tunnel), `socks5://` (host names resolved LOCALLY)
@@ -137,7 +137,7 @@ async function get(
 			createConnection: () => socket,
 			headers: {
 				host: url.host,
-				'user-agent': 'serpcast',
+				'user-agent': 'searchcast',
 				'accept-encoding': 'identity',
 			},
 		});

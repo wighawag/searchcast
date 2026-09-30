@@ -5,9 +5,10 @@
 // so it runs automatically on `npm pack` / `npm publish` / `pnpm publish`.
 // Ported from webveil's script of the same name.
 //
-// Only `packages/serpcast` uses it: the root README describes serpcast, and
-// the root LICENSE is serpcast's AGPL. `@searchcast/recipe` keeps its own README
-// and its own MIT LICENSE and must NOT be wired to this script.
+// Only `packages/searchcast` uses it: the root README describes searchcast,
+// and the root LICENSE is searchcast's AGPL. `@searchcast/browser` commits its
+// own README and LICENSE, and `@searchcast/recipe` keeps its own README and
+// its own MIT LICENSE; neither must be wired to this script.
 //
 // Safety: every write stays inside the repo. The destination must resolve to a
 // path under the repo root, and the assets must already exist at the repo root;
@@ -22,7 +23,7 @@ import {fileURLToPath} from 'node:url';
 export const PUBLISH_ASSETS = ['README.md', 'LICENSE'];
 
 // GitHub repo the published README's links should resolve against.
-export const GITHUB_REPO = 'wighawag/serpcast';
+export const GITHUB_REPO = 'wighawag/searchcast';
 
 // Repo-relative path prefixes that do NOT ship inside the npm tarball, so a
 // relative link to them is dead on npmjs.com and MUST be rewritten to an

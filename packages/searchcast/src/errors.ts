@@ -1,8 +1,10 @@
-// The one error type serpcast throws. Every failure carries a `kind` (see the
-// Errors section of CONTEXT.md); an empty result list is never an error.
+// The one error type searchcast throws. Every failure carries a `kind` (see the
+// Errors section of CONTEXT.md); an empty result list is never an error. Its
+// serpcast name stays exported as a deprecated alias for one release
+// (deprecated.ts).
 
 /** What went wrong, from the caller's point of view. */
-export type SerpcastErrorKind =
+export type SearchcastErrorKind =
 	| 'blocked'
 	| 'recipe'
 	| 'timeout'
@@ -21,18 +23,18 @@ export type SerpcastErrorKind =
 export interface EngineFailure {
 	/** The engine's name. */
 	engine: string;
-	error: SerpcastError;
+	error: SearchcastError;
 }
 
-/** A typed serpcast failure. Branch on `kind`, not on the message. */
-export class SerpcastError extends Error {
-	override name = 'SerpcastError';
-	readonly kind: SerpcastErrorKind;
+/** A typed searchcast failure. Branch on `kind`, not on the message. */
+export class SearchcastError extends Error {
+	override name = 'SearchcastError';
+	readonly kind: SearchcastErrorKind;
 	/** For `exhausted`: every engine of the chain, in order, with its failure. */
 	readonly failures?: EngineFailure[];
 
 	constructor(
-		kind: SerpcastErrorKind,
+		kind: SearchcastErrorKind,
 		message: string,
 		options?: {cause?: unknown; failures?: EngineFailure[]},
 	) {

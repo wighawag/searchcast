@@ -1,6 +1,7 @@
-// Running one declarative recipe over HTTP: the same recipe searchcast runs in
-// a real browser, with searchcast's semantics (searchcast@0.1.1
-// `src/searchcast.ts` and `src/probe.ts`) except that no script runs.
+// Running one declarative recipe over HTTP: the same recipe the browser runner
+// (`@searchcast/browser`) runs in a real browser, with its semantics
+// (searchcast@0.1.1 `src/searchcast.ts` and `src/probe.ts`) except that no
+// script runs.
 //
 // One page, one decision, in this order:
 //   1. HTTP 202/403/429, a `blockedUrl` match on the final URL, or a `blocked`
@@ -11,8 +12,8 @@
 //      `title` and a `url` is a `recipe` error, never an empty list.
 //   4. `empty` present: [] (the only way to get an empty list).
 //   5. Nothing matched: `recipe`.
-// `ready` is checked before `empty`, as in searchcast's probe, so a page on
-// which both match gives the same answer in both runners. Where searchcast
+// `ready` is checked before `empty`, as in the browser runner's probe, so a page on
+// which both match gives the same answer in both runners. Where the browser runner
 // keeps polling a live page and ends in `timeout` (nothing matched, or `ready`
 // matched with no usable item), this runner answers `recipe` at once: a static
 // HTML response will not change. Decisions and alternatives:
@@ -25,7 +26,7 @@ import {
 	type Recipe,
 } from '@searchcast/recipe';
 import {untilAborted} from './code.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import {parsePage} from './html.js';
 import {checkNumber} from './options.js';
 import type {TransportResponse, TransportSession} from './transport.js';
@@ -63,7 +64,7 @@ const SNIPPET_FIELDS = ['content', 'snippet', 'description'];
 /**
  * Run a declarative recipe for `query` over HTTP. Resolves with the results
  * (empty only when the recipe's `empty` selector matched) or rejects with a
- * `SerpcastError`. The whole call, redirects included, is bounded by the
+ * `SearchcastError`. The whole call, redirects included, is bounded by the
  * recipe's `timeoutMs`.
  */
 export async function runDeclarativeRecipe(
@@ -73,9 +74,9 @@ export async function runDeclarativeRecipe(
 ): Promise<RecipeResponse> {
 	const {name} = recipe;
 	if (requiresBrowser(recipe) || !recipe.navigate) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
-			`${name}: uses "form", which needs a real browser: run it through searchcast`,
+			`${name}: uses "form", which needs a real browser: run it through a browser engine (@searchcast/browser)`,
 		);
 	}
 	const maxRedirects =
@@ -90,7 +91,7 @@ export async function runDeclarativeRecipe(
 	const timeout = setTimeout(
 		() =>
 			timer.abort(
-				new SerpcastError(
+				new SearchcastError(
 					'timeout',
 					`${name}: timed out after ${timeoutMs} ms`,
 				),
@@ -119,7 +120,7 @@ export async function runDeclarativeRecipe(
 				return {recipe: name, results: decide(recipe, response)};
 			}
 			if (redirects >= maxRedirects) {
-				throw new SerpcastError(
+				throw new SearchcastError(
 					'transport',
 					`${name}: more than ${maxRedirects} redirects from ${url}`,
 				);
@@ -135,7 +136,7 @@ function decide(recipe: Recipe, response: TransportResponse): SearchResult[] {
 	const {name} = recipe;
 	const {status, url} = response;
 	const blocked = (reason: string) =>
-		new SerpcastError('blocked', `${name}: blocked (${reason})`);
+		new SearchcastError('blocked', `${name}: blocked (${reason})`);
 	if (BLOCKED_STATUS.has(status)) throw blocked(`HTTP ${status} from ${url}`);
 	for (const pattern of recipe.blockedUrl ?? []) {
 		if (new RegExp(pattern).test(url)) throw blocked(`url matched ${pattern}`);
@@ -146,11 +147,11 @@ function decide(recipe: Recipe, response: TransportResponse): SearchResult[] {
 	}
 	if (status < 200 || status > 299) {
 		throw MISSING_STATUS.has(status)
-			? new SerpcastError(
+			? new SearchcastError(
 					'recipe',
 					`${name}: HTTP ${status} from ${url} (is navigate.url right?)`,
 				)
-			: new SerpcastError('transport', `${name}: HTTP ${status} from ${url}`);
+			: new SearchcastError('transport', `${name}: HTTP ${status} from ${url}`);
 	}
 	if (page.has(recipe.ready)) {
 		const limit = recipe.limit ?? DEFAULT_LIMIT;
@@ -165,13 +166,13 @@ function decide(recipe: Recipe, response: TransportResponse): SearchResult[] {
 			if (results.length >= limit) break;
 		}
 		if (results.length > 0) return results;
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`${name}: ready but no result had both a title and a url`,
 		);
 	}
 	if (recipe.empty && page.has(recipe.empty)) return [];
-	throw new SerpcastError(
+	throw new SearchcastError(
 		'recipe',
 		`${name}: the page from ${url} matches none of ready (${recipe.ready}), empty or blocked`,
 	);
@@ -188,7 +189,7 @@ function resolveLocation(location: string, from: string, name: string) {
 	try {
 		return new URL(location, from).href;
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'transport',
 			`${name}: bad redirect location ${location} from ${from}`,
 			{cause},

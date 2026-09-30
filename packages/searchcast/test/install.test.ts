@@ -1,4 +1,4 @@
-// `serpcast install-libcurl` against a local release server (no network, no
+// `searchcast install-libcurl` against a local release server (no network, no
 // native library). Every test installs into a temp XDG_DATA_HOME and checks
 // the real data directory is untouched.
 
@@ -35,6 +35,7 @@ import {
 	sha256,
 	startReleaseServer,
 	tarGz,
+	tree,
 	type ReleaseServer,
 } from './release.js';
 import {startConnectProxy, startSocksProxy} from './servers.js';
@@ -69,9 +70,9 @@ let env: NodeJS.ProcessEnv;
 let installed: string;
 beforeEach(() => {
 	before = snapshot();
-	tmp = mkdtempSync(join(tmpdir(), 'serpcast-install-'));
+	tmp = mkdtempSync(join(tmpdir(), 'searchcast-install-'));
 	env = {XDG_DATA_HOME: join(tmp, 'data')};
-	installed = join(tmp, 'data', 'serpcast', libraryFileName());
+	installed = join(tmp, 'data', 'searchcast', libraryFileName());
 	server.hits.length = 0;
 });
 afterEach(() => {
@@ -96,7 +97,7 @@ describe('installLibcurl', () => {
 			status: 'installed',
 		});
 		expect(readFileSync(installed)).toEqual(lib);
-		expect(readdirSync(join(tmp, 'data', 'serpcast'))).toEqual([
+		expect(readdirSync(join(tmp, 'data', 'searchcast'))).toEqual([
 			libraryFileName(),
 		]);
 		expect(resolveLibraryPath(undefined, env)).toBe(installed);
@@ -137,12 +138,12 @@ describe('installLibcurl', () => {
 	it('refuses a platform with no pinned archive, before any request', async () => {
 		await expect(
 			installLibcurl({env, release: {...pinned(), assets: {}}}),
-		).rejects.toThrow(/no pinned .* archive .*SERPCAST_LIBCURL_PATH/);
+		).rejects.toThrow(/no pinned .* archive .*SEARCHCAST_LIBCURL_PATH/);
 		expect(server.hits).toEqual([]);
 	});
 
 	it('leaves an identical file alone, refuses a differing one without force, replaces it with force', async () => {
-		mkdirSync(join(tmp, 'data', 'serpcast'), {recursive: true});
+		mkdirSync(join(tmp, 'data', 'searchcast'), {recursive: true});
 		writeFileSync(installed, lib);
 		expect(await installLibcurl({env, release: pinned()})).toMatchObject({
 			status: 'unchanged',
@@ -158,9 +159,31 @@ describe('installLibcurl', () => {
 			await installLibcurl({env, release: pinned(), force: true}),
 		).toMatchObject({status: 'replaced'});
 		expect(readFileSync(installed)).toEqual(lib);
-		expect(readdirSync(join(tmp, 'data', 'serpcast'))).toEqual([
+		expect(readdirSync(join(tmp, 'data', 'searchcast'))).toEqual([
 			libraryFileName(),
 		]); // no temporary file left
+	});
+
+	it("writes only to the new data directory, leaving serpcast's old one as it was", async () => {
+		const old = join(tmp, 'data', 'serpcast');
+		mkdirSync(old, {recursive: true});
+		writeFileSync(join(old, libraryFileName()), 'the old install');
+		const oldTree = tree(old);
+		// The old library is read (the fallback) but is not "already installed".
+		expect(resolveLibraryPath(undefined, env)).toBe(
+			join(old, libraryFileName()),
+		);
+		expect(await installLibcurl({env, release: pinned()})).toMatchObject({
+			path: installed,
+			status: 'installed',
+		});
+		expect(readFileSync(installed)).toEqual(lib);
+		expect(tree(old)).toEqual(oldTree); // nothing written, moved or removed
+		expect(resolveLibraryPath(undefined, env)).toBe(installed); // the new one wins
+		expect(readdirSync(join(tmp, 'data')).sort()).toEqual([
+			'searchcast',
+			'serpcast',
+		]);
 	});
 
 	it('downloads through an HTTP CONNECT proxy', async () => {
@@ -263,7 +286,7 @@ describe('extract', () => {
 	});
 });
 
-describe('serpcast install-libcurl (bin)', () => {
+describe('searchcast install-libcurl (bin)', () => {
 	it('downloads the pinned release only through --proxy, and a failed download installs nothing', async () => {
 		// A proxy that refuses every CONNECT: shows where the command goes
 		// without reaching the network.
@@ -285,7 +308,7 @@ describe('serpcast install-libcurl (bin)', () => {
 			expect(error).toMatchObject({code: 1, stdout: ''});
 			const stderr = (error as {stderr: string}).stderr;
 			expect(stderr).toMatch(
-				/^serpcast: downloading https:\/\/github\.com\/lexiforest\/curl-impersonate\/releases\/download\/v2\.1\.1\/libcurl-impersonate-v2\.1\.1\..*\.tar\.gz via http:\/\/127\.0\.0\.1:\d+$/m,
+				/^searchcast: downloading https:\/\/github\.com\/lexiforest\/curl-impersonate\/releases\/download\/v2\.1\.1\/libcurl-impersonate-v2\.1\.1\..*\.tar\.gz via http:\/\/127\.0\.0\.1:\d+$/m,
 			);
 			expect(stderr).toMatch(/refused.*403.*Nothing was installed/);
 			expect(asked).toEqual(['CONNECT github.com:443 HTTP/1.1']);
@@ -328,7 +351,7 @@ describe('the only download path', () => {
 		return seen;
 	};
 
-	it('is the explicit install commands: only install.ts and install-recipes.ts download, and only the bin and serpcast/install import them', () => {
+	it('is the explicit install commands: only install.ts and install-recipes.ts download, and only the bin and searchcast/install import them', () => {
 		expect(importers('download.js').sort()).toEqual([
 			'install-recipes.ts',
 			'install.ts',
@@ -352,7 +375,7 @@ describe('the only download path', () => {
 		expect(importers('install-api.js')).toEqual([]);
 	});
 
-	it('is never reached from the main entry (index.ts), only from serpcast/install and the bin', () => {
+	it('is never reached from the main entry (index.ts), only from searchcast/install and the bin', () => {
 		const main = reached('index.ts');
 		expect(main.has('transport.ts')).toBe(true); // the walk does follow imports
 		for (const module of [
@@ -365,7 +388,7 @@ describe('the only download path', () => {
 		expect(reached('install-api.ts').has('download.ts')).toBe(true);
 	});
 
-	it('serpcast/install is a package subpath with types, exporting the installers and reports', async () => {
+	it('searchcast/install is a package subpath with types, exporting the installers and reports', async () => {
 		const pkg = JSON.parse(
 			readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 		) as {exports: Record<string, {types: string; default: string}>};
@@ -374,7 +397,7 @@ describe('the only download path', () => {
 			default: './dist/install-api.js',
 		});
 		// Resolved by name, as an embedder imports it (the built package).
-		const api = (await import('serpcast/install')) as Record<string, unknown>;
+		const api = (await import('searchcast/install')) as Record<string, unknown>;
 		for (const name of [
 			'installLibcurl',
 			'installRecipes',
@@ -386,7 +409,7 @@ describe('the only download path', () => {
 			'InstallError',
 		])
 			expect(typeof api[name], name).toBe('function');
-		const main = (await import('serpcast')) as Record<string, unknown>;
+		const main = (await import('searchcast')) as Record<string, unknown>;
 		for (const name of ['installLibcurl', 'installRecipes', 'doctor'])
 			expect(main[name], name).toBeUndefined();
 	});

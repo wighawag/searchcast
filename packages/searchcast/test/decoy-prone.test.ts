@@ -9,17 +9,17 @@ import {join} from 'node:path';
 import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import {afterAll, describe, expect, it} from 'vitest';
 import {
-	createSerpcast,
+	createSearchcast,
 	loadCodeRecipe,
-	SerpcastError,
+	SearchcastError,
 	type BrowserEngine,
 	type Engine,
 	type SearchcastModule,
-	type SerpcastOptions,
+	type SearchcastOptions,
 } from '../src/index.js';
 import {engine, fakeTransport, pages} from './engines.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'serpcast-decoy-prone-'));
+const dir = mkdtempSync(join(tmpdir(), 'searchcast-decoy-prone-'));
 afterAll(() => rmSync(dir, {recursive: true, force: true}));
 let files = 0;
 /** Write a module whose body is `source` and return its path. */
@@ -36,13 +36,13 @@ const next = engine('next');
 const answers = {a: decoy, next: () => pages.results('Next')};
 const prone = (name = 'a'): Recipe => ({...engine(name), decoyProne: true});
 
-function setup(options: SerpcastOptions = {}) {
-	return createSerpcast({
+function setup(options: SearchcastOptions = {}) {
+	return createSearchcast({
 		transport: fakeTransport(answers).transport,
 		...options,
 	});
 }
-const failures = async (engines: Engine[], options?: SerpcastOptions) => {
+const failures = async (engines: Engine[], options?: SearchcastOptions) => {
 	const response = await setup(options).search(query, {engines});
 	return {
 		engine: response.engine,
@@ -123,9 +123,9 @@ describe('decoyProne: code recipes', () => {
 			() => expect.fail('expected a failure'),
 			(e: unknown) => e,
 		);
-		expect(error).toBeInstanceOf(SerpcastError);
-		expect((error as SerpcastError).kind).toBe('recipe');
-		expect((error as SerpcastError).message).toBe(
+		expect(error).toBeInstanceOf(SearchcastError);
+		expect((error as SearchcastError).kind).toBe('recipe');
+		expect((error as SearchcastError).message).toBe(
 			`code recipe ${path}: "decoyProne" must be a boolean`,
 		);
 	});

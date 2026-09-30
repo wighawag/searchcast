@@ -1,6 +1,6 @@
 // Code recipes: a JS module, loaded only from the path the caller gives, whose
 // default export is `{name, search(query, ctx), timeoutMs?, decoyProne?}`. The context is
-// the only capability serpcast hands it: `http` (GET, and POST as a page's
+// the only capability searchcast hands it: `http` (GET, and POST as a page's
 // `fetch`, through this engine's
 // transport session, so the caller's proxy, the pinned fingerprint and the
 // session cookies all apply), `cookies` (those session cookies as the page's
@@ -13,7 +13,7 @@
 //   `DEFAULT_TIMEOUT_MS`), like a declarative recipe; `ctx.signal` aborts then.
 // - The output is validated: an array of `{title, url, snippet?, ...}` with
 //   string values, else a `recipe` error. `[]` is the module's "no results".
-// - A throw that is not a `SerpcastError` is the module's fault: `recipe`.
+// - A throw that is not a `SearchcastError` is the module's fault: `recipe`.
 // - `http.text`/`http.json` map statuses as the declarative runner does
 //   (202/403/429 `blocked`, 404/410 `recipe`, other non-2xx `transport`) and
 //   follow no redirects; `http.get` returns the raw response.
@@ -29,7 +29,7 @@ import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import {REQUEST_KINDS} from './chrome.js';
 import type {DocumentCookies} from './cookies.js';
 import type {SearchResult} from './declarative.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import type {JsonValue} from './store.js';
 import type {
 	PostOptions,
@@ -138,13 +138,13 @@ export async function loadCodeRecipe(path: string): Promise<CodeRecipe> {
 	try {
 		module = await import(pathToFileURL(resolve(path)).href);
 	} catch (cause) {
-		throw new SerpcastError('recipe', `cannot load code recipe ${path}`, {
+		throw new SearchcastError('recipe', `cannot load code recipe ${path}`, {
 			cause,
 		});
 	}
 	const recipe = module.default as Partial<CodeRecipe> | undefined;
 	const bad = (why: string) =>
-		new SerpcastError('recipe', `code recipe ${path}: ${why}`);
+		new SearchcastError('recipe', `code recipe ${path}: ${why}`);
 	if (typeof recipe !== 'object' || recipe === null)
 		throw bad('no default export object {name, search}');
 	if (typeof recipe.name !== 'string' || !recipe.name)
@@ -170,7 +170,7 @@ export async function loadCodeRecipe(path: string): Promise<CodeRecipe> {
 
 /**
  * Run a code recipe for `query`. Resolves with its validated results or
- * rejects with a `SerpcastError`; aborting `signal` rejects with its reason.
+ * rejects with a `SearchcastError`; aborting `signal` rejects with its reason.
  */
 export async function runCodeRecipe(
 	recipe: CodeRecipe,
@@ -184,7 +184,7 @@ export async function runCodeRecipe(
 	const timeout = setTimeout(
 		() =>
 			timer.abort(
-				new SerpcastError(
+				new SearchcastError(
 					'timeout',
 					`${name}: timed out after ${timeoutMs} ms`,
 				),
@@ -201,10 +201,10 @@ export async function runCodeRecipe(
 		signal,
 		...(options.maxResults !== undefined && {maxResults: options.maxResults}),
 		blocked(message) {
-			throw new SerpcastError('blocked', `${name}: blocked (${message})`);
+			throw new SearchcastError('blocked', `${name}: blocked (${message})`);
 		},
 		recipeError(message) {
-			throw new SerpcastError('recipe', `${name}: ${message}`);
+			throw new SearchcastError('recipe', `${name}: ${message}`);
 		},
 	};
 	try {
@@ -215,8 +215,8 @@ export async function runCodeRecipe(
 		return {recipe: name, results: validate(name, output)};
 	} catch (error) {
 		if (signal.aborted) throw signal.reason;
-		if (error instanceof SerpcastError) throw error;
-		throw new SerpcastError('recipe', `${name}: threw ${String(error)}`, {
+		if (error instanceof SearchcastError) throw error;
+		throw new SearchcastError('recipe', `${name}: threw ${String(error)}`, {
 			cause: error,
 		});
 	} finally {
@@ -230,10 +230,10 @@ function checkStatus(name: string, response: TransportResponse) {
 	if (status >= 200 && status <= 299 && status !== 202) return;
 	const where = `HTTP ${status} from ${url}`;
 	if (status === 202 || status === 403 || status === 429)
-		throw new SerpcastError('blocked', `${name}: blocked (${where})`);
+		throw new SearchcastError('blocked', `${name}: blocked (${where})`);
 	if (status === 404 || status === 410)
-		throw new SerpcastError('recipe', `${name}: ${where}`);
-	throw new SerpcastError('transport', `${name}: ${where}`);
+		throw new SearchcastError('recipe', `${name}: ${where}`);
+	throw new SearchcastError('transport', `${name}: ${where}`);
 }
 
 function http(
@@ -243,7 +243,7 @@ function http(
 ): CodeRecipeHttp {
 	const get = async (url: string, options: HttpOptions) => {
 		if (!REQUEST_KINDS.includes(options?.kind)) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'recipe',
 				`${name}: request kind must be one of ${REQUEST_KINDS.join(', ')}`,
 			);
@@ -257,7 +257,7 @@ function http(
 	};
 	const post = async (url: string, options: HttpPostOptions) => {
 		if (options?.kind !== 'fetch') {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'recipe',
 				`${name}: a POST must be a fetch request (kind: 'fetch')`,
 			);
@@ -270,7 +270,7 @@ function http(
 		try {
 			return JSON.parse(body) as unknown;
 		} catch (cause) {
-			throw new SerpcastError('recipe', `${name}: not JSON from ${url}`, {
+			throw new SearchcastError('recipe', `${name}: not JSON from ${url}`, {
 				cause,
 			});
 		}
@@ -288,7 +288,7 @@ function http(
 		async postJson(url, value, options) {
 			const body = JSON.stringify(value);
 			if (body === undefined) {
-				throw new SerpcastError(
+				throw new SearchcastError(
 					'recipe',
 					`${name}: postJson value is not JSON-serializable`,
 				);
@@ -309,7 +309,7 @@ function cookies(
 	document: DocumentCookies | undefined,
 ): DocumentCookies {
 	const missing = (): never => {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`${name}: ctx.cookies needs a transport session with documentCookies (the injected transport has none)`,
 		);
@@ -319,8 +319,8 @@ function cookies(
 		try {
 			return f();
 		} catch (error) {
-			if (error instanceof SerpcastError)
-				throw new SerpcastError('recipe', `${name}: ${error.message}`);
+			if (error instanceof SearchcastError)
+				throw new SearchcastError('recipe', `${name}: ${error.message}`);
 			throw error;
 		}
 	};
@@ -340,7 +340,7 @@ function session(
 			Object.hasOwn(state, key) ? structuredClone(state[key]) : undefined,
 		set(key, value) {
 			if (!isJson(value)) {
-				throw new SerpcastError(
+				throw new SearchcastError(
 					'recipe',
 					`${name}: session value for "${key}" is not plain JSON`,
 				);
@@ -369,7 +369,7 @@ function isJson(value: unknown): value is JsonValue {
 /** The module's output as normalized results, or a `recipe` error. */
 function validate(name: string, output: unknown): SearchResult[] {
 	const bad = (why: string) =>
-		new SerpcastError('recipe', `${name}: malformed output, ${why}`);
+		new SearchcastError('recipe', `${name}: malformed output, ${why}`);
 	if (!Array.isArray(output)) throw bad('not an array of results');
 	return output.map((entry: unknown, i) => {
 		if (typeof entry !== 'object' || entry === null)

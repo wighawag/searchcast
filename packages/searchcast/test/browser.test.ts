@@ -20,16 +20,16 @@ import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import {afterAll, afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {
 	chromiumProxy,
-	createSerpcast,
+	createSearchcast,
 	isBrowserEngine,
-	SerpcastError,
+	SearchcastError,
 	type BrowserEngine,
 	type SearchcastModule,
-	type SerpcastOptions,
+	type SearchcastOptions,
 } from '../src/index.js';
 import {engine, fakeTransport, pages} from './engines.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'serpcast-browser-'));
+const dir = mkdtempSync(join(tmpdir(), 'searchcast-browser-'));
 afterAll(() => rmSync(dir, {recursive: true, force: true}));
 
 /** What the fake server answers for one `recipe` query parameter. */
@@ -109,8 +109,8 @@ const open: Array<{close(): Promise<void>}> = [];
 afterEach(async () => {
 	for (const instance of open.splice(0)) await instance.close();
 });
-function serpcast(options: SerpcastOptions = {}) {
-	const instance = createSerpcast({
+function searchcast(options: SearchcastOptions = {}) {
+	const instance = createSearchcast({
 		transport: fakeTransport({}).transport,
 		...options,
 	});
@@ -119,12 +119,12 @@ function serpcast(options: SerpcastOptions = {}) {
 }
 
 /** The error one engine fails with, alone in a chain. */
-async function failureOf(target: BrowserEngine, options?: SerpcastOptions) {
-	const error = await serpcast(options)
+async function failureOf(target: BrowserEngine, options?: SearchcastOptions) {
+	const error = await searchcast(options)
 		.search('q', {engines: [target]})
 		.catch((e: unknown) => e);
-	expect(error).toBeInstanceOf(SerpcastError);
-	const [first] = (error as SerpcastError).failures!;
+	expect(error).toBeInstanceOf(SearchcastError);
+	const [first] = (error as SearchcastError).failures!;
 	return first!.error;
 }
 
@@ -149,7 +149,7 @@ for (const [where, endpoint] of [
 	describe(`endpoint mode over ${where}`, () => {
 		it('maps the results (snippet from content, extra fields kept)', async () => {
 			requests.length = 0;
-			const answer = await serpcast().search('some query', {
+			const answer = await searchcast().search('some query', {
 				engines: [at(endpoint(), 'web')],
 			});
 			expect(answer).toEqual({
@@ -170,7 +170,7 @@ for (const [where, endpoint] of [
 
 		it('asks for the recipe by the given name, else the engine name', async () => {
 			requests.length = 0;
-			const answer = await serpcast().search('q', {
+			const answer = await searchcast().search('q', {
 				engines: [at(endpoint(), 'my-browser', {recipe: 'none'})],
 			});
 			expect(answer.results).toEqual([]);
@@ -189,7 +189,7 @@ for (const [where, endpoint] of [
 
 describe('endpoint mode', () => {
 	it('tells blocked from recipe although both are HTTP 502, and only blocked cools down', async () => {
-		const s = serpcast();
+		const s = searchcast();
 		const chain = {
 			engines: [at(base, 'blocked'), at(base, 'recipe'), at(base, 'web')],
 		};
@@ -207,7 +207,7 @@ describe('endpoint mode', () => {
 
 	it('is the fallback after blocked HTTP engines', async () => {
 		const {transport} = fakeTransport({a: pages.blocked});
-		const answer = await createSerpcast({transport}).search('q', {
+		const answer = await createSearchcast({transport}).search('q', {
 			engines: [engine('a'), at(base, 'web')],
 		});
 		expect(answer.engine).toBe('web');
@@ -221,7 +221,7 @@ describe('endpoint mode', () => {
 
 	it('rejects with the signal reason on abort', async () => {
 		const controller = new AbortController();
-		const search = serpcast().search('q', {
+		const search = searchcast().search('q', {
 			engines: [at(base, 'slow')],
 			signal: controller.signal,
 		});
@@ -264,7 +264,7 @@ const inBrowser = (name = 'web'): BrowserEngine => ({
 	searchcast: {recipe},
 });
 
-/** A fake searchcast module recording what serpcast does with it. */
+/** A fake searchcast module recording what searchcast does with it. */
 function fakeModule(
 	answer: (query: string) => unknown = () => ({
 		results: [{title: 'T', url: 'https://t.test/'}],
@@ -314,10 +314,10 @@ function fakeModule(
 }
 
 describe('library mode', () => {
-	it('starts searchcast lazily, once, with serpcast proxy (translated) and the caller options', async () => {
+	it('starts searchcast lazily, once, with searchcast proxy (translated) and the caller options', async () => {
 		const {module, log} = fakeModule();
 		const {transport} = fakeTransport({a: () => pages.results('A')});
-		const s = serpcast({
+		const s = searchcast({
 			transport,
 			proxy: 'socks5h://127.0.0.1:9050',
 			searchcast: {
@@ -353,12 +353,12 @@ describe('library mode', () => {
 		]);
 		await s.close();
 		expect(log.closed).toBe(1);
-		expect(existsSync(join(dir, 'p'))).toBe(false); // never created by serpcast
+		expect(existsSync(join(dir, 'p'))).toBe(false); // never created by searchcast
 	});
 
-	it('passes no proxy when serpcast has none, finds Chrome with searchcast, and runs Xvfb', async () => {
+	it('passes no proxy when searchcast has none, finds Chrome with searchcast, and runs Xvfb', async () => {
 		const {module, log} = fakeModule();
-		const s = serpcast({searchcast: {module, xvfb: '/usr/bin/Xvfb'}});
+		const s = searchcast({searchcast: {module, xvfb: '/usr/bin/Xvfb'}});
 		await s.search('q', {engines: [inBrowser()]});
 		const {browser} = log.created[0]!;
 		expect(browser.proxy).toBeUndefined();
@@ -370,7 +370,7 @@ describe('library mode', () => {
 
 	it('creates a temporary 0700 profile and deletes it on close()', async () => {
 		const {module, log} = fakeModule();
-		const s = serpcast({searchcast: {module}});
+		const s = searchcast({searchcast: {module}});
 		await s.search('q', {engines: [inBrowser()]});
 		const [profile] = log.profiles;
 		expect(profile!.mode).toBe(0o700);
@@ -406,7 +406,7 @@ describe('library mode', () => {
 	it('rejects with the signal reason on abort', async () => {
 		const {module} = fakeModule(() => new Promise(() => {}));
 		const controller = new AbortController();
-		const search = serpcast({searchcast: {module}}).search('q', {
+		const search = searchcast({searchcast: {module}}).search('q', {
 			engines: [inBrowser()],
 			signal: controller.signal,
 		});
@@ -414,7 +414,7 @@ describe('library mode', () => {
 		await expect(search).rejects.toThrow('stop');
 	});
 
-	it('uses the installed @searchcast/browser when none is injected (it has the shape serpcast uses)', async () => {
+	it('uses the installed @searchcast/browser when none is injected (it has the shape searchcast uses)', async () => {
 		// The optional peer is a workspace devDependency here; a consumer that
 		// does not install it gets browser-missing.test.ts's error instead.
 		const real = (await import(
@@ -466,7 +466,7 @@ describe('the temporary profile on process exit', () => {
 		const dist = new URL('../dist/index.js', import.meta.url).href;
 		const script = `
 			import {existsSync} from 'node:fs';
-			const {createSerpcast} = await import(${JSON.stringify(dist)});
+			const {createSearchcast} = await import(${JSON.stringify(dist)});
 			let profile;
 			const module = {
 				Searchcast: class {
@@ -476,7 +476,7 @@ describe('the temporary profile on process exit', () => {
 				},
 				findChrome: () => '/bin/chrome',
 			};
-			const s = createSerpcast({searchcast: {module}});
+			const s = createSearchcast({searchcast: {module}});
 			await s.search('q', {engines: [{name: 'b', searchcast: {recipe: {name: 'b'}}}]});
 			console.log(JSON.stringify({profile, existed: existsSync(profile)}));
 			process.exit(0);
@@ -493,7 +493,7 @@ describe('the temporary profile on process exit', () => {
 			existed: boolean;
 		};
 		expect(existed).toBe(true);
-		expect(profile).toContain('serpcast-profile-');
+		expect(profile).toContain('searchcast-profile-');
 		expect(existsSync(profile)).toBe(false);
 	});
 });

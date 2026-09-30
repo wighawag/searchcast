@@ -1,25 +1,26 @@
-// Browser engines: a recipe run by searchcast in a real browser, the chain's
-// fallback when HTTP is blocked. Two modes, told apart by the engine's
-// `searchcast` field:
+// Browser engines: a recipe run in a real browser by the browser runner
+// (`@searchcast/browser`), the chain's fallback when HTTP is blocked. Two
+// modes, told apart by the engine's `searchcast` field:
 //
-// - library (`{recipe}`): serpcast imports `@searchcast/browser` (an optional
+// - library (`{recipe}`): searchcast imports `@searchcast/browser` (an optional
 //   peer dependency, imported here only, and only when such an engine runs) and
-//   starts it lazily with the caller's `searchcast` options and serpcast's
-//   proxy. One browser per serpcast instance, stopped by `close()`.
+//   starts it lazily with the caller's `searchcast` options and searchcast's
+//   proxy. One browser per searchcast instance, stopped by `close()`.
 // - endpoint (`{endpoint, recipe?}`): a running `searchcast serve`, over HTTP
-//   or a Unix socket (`GET /search?recipe=&q=`). serpcast does not control that
-//   browser's egress; the caller must.
+//   or a Unix socket (`GET /search?recipe=&q=`). searchcast does not control
+//   that browser's egress; the caller must.
 //
-// Errors (searchcast-endpoint.ts) come from searchcast's `error` field (endpoint; not the status, since
-// `blocked` and `recipe` are both 502) or the thrown error's `code` (library):
-// `blocked`, `recipe`, `timeout` keep their kind; `input` and `unknown-recipe`
-// are `recipe` (the engine is misconfigured); anything else is `transport`.
+// Errors (searchcast-endpoint.ts) come from the browser runner's `error` field
+// (endpoint; not the status, since `blocked` and `recipe` are both 502) or the
+// thrown error's `code` (library): `blocked`, `recipe`, `timeout` keep their
+// kind; `input` and `unknown-recipe` are `recipe` (the engine is
+// misconfigured); anything else is `transport`.
 //
 // Proxy: Chromium does not accept `socks5h://` and always resolves host names
 // at a SOCKS5 proxy, so `socks5h://` is passed as `socks5://` (DNS stays at the
 // proxy). Profile: without the caller's `profile`, a temporary 0700 directory
 // is created at first start and deleted on `close()` and on process exit, the
-// one disk write serpcast makes itself (ADR 0002).
+// one disk write searchcast makes itself (ADR 0002).
 // Decisions and alternatives: work/notes/observations/searchcast-engine-decisions.md.
 
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -28,19 +29,19 @@ import {join} from 'node:path';
 import type {Recipe} from '@searchcast/recipe';
 import {untilAborted} from './code.js';
 import type {SearchResult} from './declarative.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import {
 	searchcastError,
 	searchcastResults,
 	searchEndpoint,
 } from './searchcast-endpoint.js';
 
-/** An engine run by searchcast in a real browser, in-process or over its socket. */
+/** An engine run by the browser runner in a real browser, in-process or over its socket. */
 export interface BrowserEngine {
 	name: string;
 	searchcast:
 		| {
-				/** Library mode: this recipe, in serpcast's own searchcast. */
+				/** Library mode: this recipe, in this instance's own browser runner. */
 				recipe: Recipe;
 		  }
 		| {
@@ -55,9 +56,9 @@ export interface BrowserEngine {
 		  };
 }
 
-/** How serpcast starts searchcast for library-mode engines (named after searchcast's CLI flags). */
+/** How searchcast starts the browser runner for library-mode engines (named after the `searchcast serve` flags). */
 export interface SearchcastLibraryOptions {
-	/** The Chromium or Chrome executable. Default: searchcast's `findChrome()` ($SEARCHCAST_CHROME, then PATH). */
+	/** The Chromium or Chrome executable. Default: the browser runner's `findChrome()` ($SEARCHCAST_CHROME, then PATH). */
 	chrome?: string;
 	/** Run the browser on a private Xvfb display started from this executable. */
 	xvfb?: string;
@@ -65,7 +66,7 @@ export interface SearchcastLibraryOptions {
 	headless?: boolean;
 	/** The browser profile directory. Default: a temporary one, deleted on close and on exit. */
 	profile?: string;
-	/** Maximum simultaneous tabs (searchcast's default: 2). */
+	/** Maximum simultaneous tabs (the browser runner's default: 2). */
 	concurrency?: number;
 	/** Extra Chromium arguments. */
 	chromeArgs?: string[];
@@ -73,7 +74,7 @@ export interface SearchcastLibraryOptions {
 	module?: SearchcastModule;
 }
 
-/** The part of the `@searchcast/browser` package serpcast uses. */
+/** The part of the `@searchcast/browser` package searchcast uses. */
 export interface SearchcastModule {
 	Searchcast: new (options: {
 		browser: {
@@ -130,7 +131,7 @@ export function createBrowserRunner(
 		const module = config.module ?? (await importSearchcast());
 		const executable = config.chrome ?? module.findChrome?.();
 		if (!executable) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'transport',
 				'searchcast: no browser found; pass searchcast.chrome or set SEARCHCAST_CHROME',
 			);
@@ -142,7 +143,7 @@ export function createBrowserRunner(
 		try {
 			let userDataDir = config.profile;
 			if (userDataDir === undefined) {
-				const dir = mkdtempSync(join(tmpdir(), 'serpcast-profile-'));
+				const dir = mkdtempSync(join(tmpdir(), 'searchcast-profile-'));
 				const remove = () => rmSync(dir, {recursive: true, force: true});
 				process.once('exit', remove);
 				cleanups.push(() => {
@@ -154,7 +155,7 @@ export function createBrowserRunner(
 			let env: Record<string, string> | undefined;
 			if (config.xvfb) {
 				if (!module.startXvfb)
-					throw new Error('this searchcast has no startXvfb');
+					throw new Error('this browser runner has no startXvfb');
 				const xvfb = await module.startXvfb({executable: config.xvfb});
 				cleanups.push(() => xvfb.close());
 				env = xvfb.env;
@@ -174,8 +175,8 @@ export function createBrowserRunner(
 			return {searchcast, stop};
 		} catch (error) {
 			await stop();
-			if (error instanceof SerpcastError) throw error;
-			throw new SerpcastError(
+			if (error instanceof SearchcastError) throw error;
+			throw new SearchcastError(
 				'transport',
 				`searchcast: cannot start (${String(error)})`,
 				{cause: error},
@@ -227,7 +228,7 @@ async function importSearchcast(): Promise<SearchcastModule> {
 	try {
 		return (await import(name)) as SearchcastModule;
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'transport',
 			'@searchcast/browser is not installed: library-mode browser engines need the optional peer dependency "@searchcast/browser" (npm install @searchcast/browser)',
 			{cause},

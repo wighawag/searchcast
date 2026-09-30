@@ -1,5 +1,5 @@
 // The decoy rule (src/decoy.ts), pure: no transport, no chain. The decoy
-// pages are shaped after the real ones Bing served for these queries
+// pages are shaped after the real ones a measured engine served for these queries
 // (2026-09-26 measurements): results about ONE word of the query.
 
 import {describe, expect, it} from 'vitest';

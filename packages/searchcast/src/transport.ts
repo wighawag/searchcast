@@ -56,7 +56,7 @@ import {
 	type DocumentCookies,
 	type StoredCookie,
 } from './cookies.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import {checkBoolean, checkNumber} from './options.js';
 import {
 	checkPreflight,
@@ -74,7 +74,7 @@ import {
 } from './libcurl.js';
 
 export interface TransportOptions {
-	/** The libcurl-impersonate shared library; else SERPCAST_LIBCURL_PATH, LIBCURL_PATH, the data dir. */
+	/** The libcurl-impersonate shared library; else SEARCHCAST_LIBCURL_PATH, SERPCAST_LIBCURL_PATH (old name), LIBCURL_PATH, the data dir, serpcast's old data dir. */
 	libcurlPath?: string;
 	/**
 	 * Proxy URL (`http://`, `socks5://`, `socks5h://`), passed to libcurl as
@@ -373,7 +373,7 @@ function parseUrl(url: string): URL {
 		parsed = undefined;
 	}
 	if (parsed?.protocol !== 'http:' && parsed?.protocol !== 'https:') {
-		throw new SerpcastError('recipe', `not an http(s) URL: ${url}`);
+		throw new SearchcastError('recipe', `not an http(s) URL: ${url}`);
 	}
 	return parsed;
 }
@@ -396,7 +396,7 @@ async function perform(
 	const {koffi} = curl;
 	proto ??= koffi.pointer(
 		koffi.proto(
-			'size_t serpcast_data_cb(void *ptr, size_t size, size_t n, void *user)',
+			'size_t searchcast_data_cb(void *ptr, size_t size, size_t n, void *user)',
 		),
 	);
 	const max = options.maxBodyBytes ?? MAX_BODY_BYTES;
@@ -422,9 +422,10 @@ async function perform(
 	const handle = curl.init();
 	let list: unknown = null;
 	try {
-		if (!handle) throw new SerpcastError('transport', 'curl_easy_init failed');
+		if (!handle)
+			throw new SearchcastError('transport', 'curl_easy_init failed');
 		if (impersonate && curl.impersonate!(handle, IMPERSONATE_TARGET, 0) !== 0) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'impersonation',
 				`impersonating ${IMPERSONATE_TARGET} failed`,
 			);
@@ -477,16 +478,16 @@ async function perform(
 		set(OPT.HEADERFUNCTION, proto, onHeader);
 		const code = await connections.run(handle, url, request.signal);
 		if (code === E_TIMEDOUT)
-			throw new SerpcastError('timeout', `request to ${url} timed out`);
+			throw new SearchcastError('timeout', `request to ${url} timed out`);
 		if (code === E_WRITE && tooLarge) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'transport',
 				`response from ${url} is larger than ${max} bytes`,
 			);
 		}
 		if (code !== 0) {
 			const detail = koffi.decode.string(errbuf) || curl.strerror(code);
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'transport',
 				`request to ${url} failed: ${detail} (curl ${code})`,
 			);
@@ -546,7 +547,7 @@ class Connections {
 				this.closing = false;
 				if (!this.multi) {
 					this.multi = undefined;
-					reject(new SerpcastError('transport', 'curl_multi_init failed'));
+					reject(new SearchcastError('transport', 'curl_multi_init failed'));
 					return;
 				}
 			}
@@ -577,7 +578,7 @@ class Connections {
 	}
 
 	private multiError(url: string, call: string, code: number) {
-		return new SerpcastError(
+		return new SearchcastError(
 			'transport',
 			`request to ${url} failed: ${call}: ${this.curl.multiStrerror(code)} (curlm ${code})`,
 		);

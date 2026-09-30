@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// The `serpcast` bin. `serpcast query` runs one declarative recipe once
+// The `searchcast` bin. `searchcast query` runs one declarative recipe once
 // through the impersonated transport (recipe development); `install-libcurl`
 // downloads the pinned library into the data directory, the only download
-// serpcast ever makes and only when typed; `doctor` reports the library and
+// searchcast ever makes and only when typed; `doctor` reports the library and
 // whether impersonation is active (no network request without `--remote`);
 // `install-recipes` installs a recipe set from a checksum-pinned archive (a
 // URL is downloaded only then, and only when typed); `recipes list` shows the
@@ -10,9 +10,9 @@
 //
 // Exit codes: 0 on success (for `query`, `{recipe, results}` as JSON on
 // stdout, results empty only when the recipe's `empty` selector matched); 1 on
-// a failure, with `serpcast: <kind>: <message>` on stderr for a search failure
+// a failure, with `searchcast: <kind>: <message>` on stderr for a search failure
 // (an unreadable or invalid recipe file is a `recipe` failure) or
-// `serpcast: <message>` for a failed install, and for `doctor` when the
+// `searchcast: <message>` for a failed install, and for `doctor` when the
 // report is not healthy; 2 on a usage error.
 import {parseArgs} from 'node:util';
 import {RecipeError} from '@searchcast/recipe';
@@ -20,13 +20,17 @@ import {loadRecipeFile} from '@searchcast/recipe/node';
 import {
 	createTransport,
 	runDeclarativeRecipe,
-	SerpcastError,
+	SearchcastError,
 	usage,
 } from './index.js';
 import {doctor, formatReport, healthy} from './doctor.js';
 import {InstallError, installLibcurl} from './install.js';
 import {installRecipes} from './install-recipes.js';
-import {formatRecipeSets, listRecipeSets, recipesDir} from './recipes.js';
+import {
+	formatInstalledRecipeSets,
+	formatRecipeSets,
+	listRecipeSets,
+} from './recipes.js';
 
 /** The options each command accepts (besides --help). */
 const COMMANDS: Record<string, string[]> = {
@@ -38,7 +42,7 @@ const COMMANDS: Record<string, string[]> = {
 };
 
 function usageError(message: string): never {
-	process.stderr.write(`serpcast: ${message}\n\n${usage()}\n`);
+	process.stderr.write(`searchcast: ${message}\n\n${usage()}\n`);
 	process.exit(2);
 }
 
@@ -51,7 +55,7 @@ async function query(recipePath: string | undefined, values: Values) {
 		recipe = loadRecipeFile(recipePath);
 	} catch (error) {
 		if (!(error instanceof RecipeError)) throw error;
-		throw new SerpcastError('recipe', error.message, {cause: error});
+		throw new SearchcastError('recipe', error.message, {cause: error});
 	}
 	const transport = createTransport({
 		proxy: values.proxy,
@@ -78,7 +82,7 @@ async function installCommand(values: Values) {
 	const {path} = await installLibcurl({
 		proxy: values.proxy,
 		force: values.force,
-		log: (line) => process.stderr.write(`serpcast: ${line}\n`),
+		log: (line) => process.stderr.write(`searchcast: ${line}\n`),
 	});
 	process.stdout.write(path + '\n');
 }
@@ -99,7 +103,7 @@ async function installRecipesCommand(values: Values) {
 		dir: values.dir,
 		proxy: values.proxy,
 		force: values.force,
-		log: (line) => process.stderr.write(`serpcast: ${line}\n`),
+		log: (line) => process.stderr.write(`searchcast: ${line}\n`),
 	});
 	process.stdout.write(dir + '\n');
 }
@@ -108,8 +112,11 @@ function recipesCommand(values: Values) {
 	if (values.positionals.join(' ') !== 'list') {
 		usageError('recipes takes one subcommand: list');
 	}
-	const base = values.dir ?? recipesDir();
-	process.stdout.write(formatRecipeSets(base, listRecipeSets(base)) + '\n');
+	// Without --dir, also the sets still in serpcast's old data directory.
+	const text = values.dir
+		? formatRecipeSets(values.dir, listRecipeSets(values.dir))
+		: formatInstalledRecipeSets();
+	process.stdout.write(text + '\n');
 }
 
 async function doctorCommand(values: Values) {
@@ -166,13 +173,13 @@ async function main(argv: string[]): Promise<void> {
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-	if (error instanceof SerpcastError) {
-		process.stderr.write(`serpcast: ${error.kind}: ${error.message}\n`);
+	if (error instanceof SearchcastError) {
+		process.stderr.write(`searchcast: ${error.kind}: ${error.message}\n`);
 	} else if (error instanceof InstallError) {
-		process.stderr.write(`serpcast: ${error.message}\n`);
+		process.stderr.write(`searchcast: ${error.message}\n`);
 	} else {
 		process.stderr.write(
-			`serpcast: ${(error as Error).stack ?? String(error)}\n`,
+			`searchcast: ${(error as Error).stack ?? String(error)}\n`,
 		);
 	}
 	process.exitCode = 1;

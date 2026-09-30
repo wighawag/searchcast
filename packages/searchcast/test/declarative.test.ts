@@ -6,7 +6,7 @@ import {afterAll, afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {parseRecipe} from '@searchcast/recipe';
 import {
 	runDeclarativeRecipe,
-	SerpcastError,
+	SearchcastError,
 	type RequestOptions,
 	type TransportResponse,
 } from '../src/index.js';
@@ -32,8 +32,8 @@ const failure = async (promise: Promise<unknown>) => {
 		() => expect.fail('expected a failure'),
 		(e: unknown) => e,
 	);
-	expect(error).toBeInstanceOf(SerpcastError);
-	return error as SerpcastError;
+	expect(error).toBeInstanceOf(SearchcastError);
+	return error as SearchcastError;
 };
 
 beforeAll(async () => {
@@ -260,7 +260,7 @@ describe('runDeclarativeRecipe: failures', () => {
 		const hits = server.hits.length;
 		const error = await failure(runDeclarativeRecipe(form, 'q', {session}));
 		expect(error.kind).toBe('recipe');
-		expect(error.message).toMatch(/searchcast/);
+		expect(error.message).toMatch(/browser engine \(@searchcast\/browser\)/);
 		expect(session.requests).toEqual([]);
 		expect(server.hits.length).toBe(hits);
 	});
@@ -369,8 +369,8 @@ describe('aborting between redirect hops', () => {
 		const {error, unhandled} = await unhandledDuring(() =>
 			runDeclarativeRecipe(target, 'q', {session}),
 		);
-		expect(error).toBeInstanceOf(SerpcastError);
-		expect((error as SerpcastError).kind).toBe('timeout');
+		expect(error).toBeInstanceOf(SearchcastError);
+		expect((error as SearchcastError).kind).toBe('timeout');
 		expect(session.requests).toHaveLength(2);
 		expect(unhandled).toEqual([]);
 	});

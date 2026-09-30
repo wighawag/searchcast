@@ -1,3 +1,4 @@
+> Names changed since this was written, see [ADR 0005](0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md): read "serpcast" here as `searchcast`, "serpcast-recipe" as `@searchcast/recipe`, and "searchcast" (the browser runner) as `@searchcast/browser`.
 # The recipe schema lives in serpcast-recipe, MIT, and searchcast depends on it
 
 ## Status

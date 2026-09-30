@@ -32,17 +32,17 @@ jobs:
 
       # The native transport tests need libcurl-impersonate: install the
       # release pinned in LIBCURL_IMPERSONATE (packages/searchcast/src/libcurl.ts)
-      # with `serpcast install-libcurl` itself (which verifies its checksum),
+      # with `searchcast install-libcurl` itself (which verifies its checksum),
       # into a temporary data directory, and point the tests at it. The
       # plain-libcurl tests use the runner's system libcurl. Locally, without
       # these variables, those tests are skipped with a message.
       - name: Install pinned libcurl-impersonate
         run: |
           lib="$(XDG_DATA_HOME="$RUNNER_TEMP/xdg" node packages/searchcast/dist/cli.js install-libcurl)"
-          echo "SERPCAST_LIBCURL_PATH=$lib" >> "$GITHUB_ENV"
+          echo "SEARCHCAST_LIBCURL_PATH=$lib" >> "$GITHUB_ENV"
           plain=/usr/lib/x86_64-linux-gnu/libcurl.so.4
           test -e "$plain"
-          echo "SERPCAST_TEST_PLAIN_LIBCURL=$plain" >> "$GITHUB_ENV"
+          echo "SEARCHCAST_TEST_PLAIN_LIBCURL=$plain" >> "$GITHUB_ENV"
 
       # With the build above, the same gate as `verify` in dorfl.json.
       # The browser tests (packages/browser) drive the runner's preinstalled

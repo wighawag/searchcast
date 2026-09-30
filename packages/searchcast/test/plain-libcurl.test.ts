@@ -1,12 +1,12 @@
 // Strict mode against a PLAIN libcurl, which loads silently. Its own file (the
 // library path is process-global, and vitest runs each file in its own
-// process). Needs SERPCAST_TEST_PLAIN_LIBCURL (a plain libcurl.so; CI sets it).
+// process). Needs SEARCHCAST_TEST_PLAIN_LIBCURL (a plain libcurl.so; CI sets it).
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {createTransport} from '../src/index.js';
 import {CA_PATH, startH2Server, type H2Server} from './servers.js';
 
-const PLAIN = process.env.SERPCAST_TEST_PLAIN_LIBCURL;
+const PLAIN = process.env.SEARCHCAST_TEST_PLAIN_LIBCURL;
 
 describe.skipIf(!PLAIN)('with plain libcurl', () => {
 	let server: H2Server;

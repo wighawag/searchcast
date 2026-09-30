@@ -1,5 +1,5 @@
 // A parsed HTML page and the few DOM reads a declarative recipe needs, with
-// the meaning they have in searchcast's in-page probe (searchcast@0.1.1
+// the meaning they have in the browser runner's in-page probe (searchcast@0.1.1
 // `src/probe.ts`): `querySelector` semantics (descendants only, ancestors may
 // match the selector's left part), a field's visible text with whitespace
 // collapsed, and `href`/`src` read as absolute URLs the way the DOM properties
@@ -21,7 +21,7 @@ import * as css from 'css-select';
 import type {AnyNode, Document, Element} from 'domhandler';
 import {parseDocument} from 'htmlparser2';
 import type {FieldSpec} from '@searchcast/recipe';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 
 const SKIPPED = new Set(['script', 'style', 'template', 'noscript', 'head']);
 const BLOCK = new Set(
@@ -66,7 +66,7 @@ export function parsePage(html: string, url: string, label: string): Page {
 		try {
 			return run();
 		} catch (cause) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'recipe',
 				`${label}: invalid selector ${selector}: ${(cause as Error).message}`,
 				{cause},

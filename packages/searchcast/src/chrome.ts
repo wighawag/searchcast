@@ -12,7 +12,7 @@
 // offered: navigations to another origin, navigation (form) POST,
 // non-English `accept-language`.
 
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 
 /** The pinned Chrome major version. */
 export const CHROME_MAJOR = 146;
@@ -107,7 +107,7 @@ const CC_SECOND_LEVEL = new Set([
 
 /**
  * The registrable domain ("site" without the scheme) of a host, by a small
- * built-in rule instead of the public suffix list (which serpcast does not
+ * built-in rule instead of the public suffix list (which searchcast does not
  * ship): an IP address or a single-label host is its own site; otherwise the
  * last two labels, or the last three when the TLD has two letters and the
  * label before it is a common second level (`co.uk`, `com.au`, ...).
@@ -154,14 +154,14 @@ function pageUrl(kind: RequestKind, referer: string): URL {
 	try {
 		return new URL(referer);
 	} catch {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`a ${kind} request to another origin needs an absolute referer URL, got ${JSON.stringify(referer)}`,
 		);
 	}
 }
 
-/** The request methods serpcast sends; `POST` only for the `fetch` kind. */
+/** The request methods searchcast sends; `POST` only for the `fetch` kind. */
 export type RequestMethod = 'GET' | 'POST';
 
 /** The `content-type` Chrome's `fetch()` gives a string body sent without one. */
@@ -204,7 +204,7 @@ function siteOf(
  * The CORS preflight (`OPTIONS`) Chrome sends before a `fetch` POST, or
  * `undefined` when it sends none: only a request that is not same-origin
  * and whose `content-type` is not CORS-safelisted (`isSafelistedContentType`)
- * is preflighted, since serpcast sends no other author header. Chrome sends
+ * is preflighted, since searchcast sends no other author header. Chrome sends
  * it without credentials (no cookie, no `sec-fetch-storage-access`, and on a
  * connection of its own), with no client hints, and asks only for
  * `content-type`. Source: work/notes/findings/post-requests.md.
@@ -247,7 +247,7 @@ export function preflightTable(context: {
  * `fetchSite()`), else `same-origin`. A request that is not same-origin sends
  * the page's origin as `referer` (Chrome's default `strict-origin-when-cross-
  * origin`), and a `fetch` adds `origin`; a cross-site one adds
- * `sec-fetch-storage-access: active` (a credentialed request, as serpcast
+ * `sec-fetch-storage-access: active` (a credentialed request, as searchcast
  * always sends the session's cookies). `same-origin-navigation` is always
  * same-origin and `document` always `none`.
  *
@@ -276,13 +276,13 @@ export function headerTable(
 	const {referer, cookie} = context;
 	const post = context.method === 'POST';
 	if (post && kind !== 'fetch') {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`a POST must be a fetch request, not ${kind}`,
 		);
 	}
 	if (kind !== 'document' && !referer) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`a ${kind} request needs a referer (the page it comes from)`,
 		);
@@ -291,7 +291,7 @@ export function headerTable(
 		const allowed: readonly FetchSite[] =
 			kind === 'fetch' || kind === 'script' ? FETCH_SITES : ['same-origin'];
 		if (kind === 'document' || !allowed.includes(context.fetchSite)) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'recipe',
 				`fetchSite ${JSON.stringify(context.fetchSite)} is not allowed for a ${kind} request (${kind === 'document' ? 'none' : allowed.join(', ')})`,
 			);

@@ -2,7 +2,7 @@
 // the real native library against a local HTTP/2 server: the exact captured
 // header tables on the wire (work/notes/findings/post-requests.md), the
 // preflight on a connection of its own, its cache and its refusals. Skipped
-// without SERPCAST_LIBCURL_PATH, like the other native tests.
+// without SEARCHCAST_LIBCURL_PATH, like the other native tests.
 
 import type http2 from 'node:http2';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
@@ -11,7 +11,7 @@ import {
 	headerTable,
 	MAX_REQUEST_BODY_BYTES,
 	preflightTable,
-	SerpcastError,
+	SearchcastError,
 } from '../src/index.js';
 import {
 	CA_PATH,
@@ -20,7 +20,7 @@ import {
 	type H2Server,
 } from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 
 interface Seen {
 	method: string;
@@ -296,7 +296,7 @@ describe.skipIf(!LIB)('POST (native libcurl-impersonate)', () => {
 			const error = await session
 				.request(url('/refused'), attempt as never)
 				.catch((e: unknown) => e);
-			expect(error).toBeInstanceOf(SerpcastError);
+			expect(error).toBeInstanceOf(SearchcastError);
 			expect(error).toMatchObject({kind: 'recipe'});
 		}
 		expect(seen.filter((s) => s.path === '/refused')).toHaveLength(0);

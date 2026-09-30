@@ -1,4 +1,4 @@
-// The engine chain, serpcast's main entry. One search tries its engines in
+// The engine chain, searchcast's main entry. One search tries its engines in
 // order and stops at the first answer (results, or an `empty` match): engines
 // gate on request volume per exit IP, so querying all of them per search
 // (SearXNG's fan-out) would spend that budget. Failures before the answer are
@@ -20,17 +20,17 @@
 //   Decisions: work/notes/observations/2026-09-29-decoy-prone-recipes-decisions.md
 //   and work/notes/observations/2026-09-30-tunables-and-install-api-decisions.md.
 // - The caller's abort rejects with the signal's reason and is not a failure.
-// - Any other error that is not a `SerpcastError` is a bug and is rethrown.
+// - Any other error that is not a `SearchcastError` is a bug and is rethrown.
 //
 // Cooldowns and sessions live in the injected state store (store.ts), keyed
-// per engine name; each record carries its own time, checked with serpcast's
+// per engine name; each record carries its own time, checked with searchcast's
 // clock, and a TTL so the store can drop it. A session (the engine's
 // transport-session cookies, plus a code recipe's JSON state) is loaded before
 // the engine runs and saved after, whatever the outcome, so challenge cookies
 // survive; concurrent searches on
 // one engine race and the last save wins. `serpcast/sessions` indexes the
 // engines with a session, so `clearSessions()` finds them in any store.
-// Browser engines (browser.ts) run in searchcast: they have no transport
+// Browser engines (browser.ts) run in the browser runner: they have no transport
 // session (the browser keeps its own cookies), and `close()` stops the
 // library-mode browser.
 //
@@ -60,7 +60,7 @@ import {isCodeRecipe, runCodeRecipe, type CodeRecipe} from './code.js';
 import type {StoredCookie} from './cookies.js';
 import {decoyRule, decoyTerms, isDecoy, type DecoyRule} from './decoy.js';
 import {runDeclarativeRecipe, type SearchResult} from './declarative.js';
-import {SerpcastError, type EngineFailure} from './errors.js';
+import {SearchcastError, type EngineFailure} from './errors.js';
 import {checkBoolean, checkNames, checkNumber} from './options.js';
 import {createMemoryStore, type JsonValue, type StateStore} from './store.js';
 import {
@@ -86,7 +86,7 @@ export interface ChainTransport {
 		Partial<Pick<TransportSession, 'close' | 'documentCookies'>>;
 }
 
-export interface SerpcastOptions extends TransportOptions {
+export interface SearchcastOptions extends TransportOptions {
 	/** Where sessions and cooldowns live. Default: in memory, per instance. */
 	store?: StateStore;
 	/** How long an engine that answered `blocked` is skipped, in ms. Default 5 minutes; 0: no cooldown. */
@@ -97,7 +97,7 @@ export interface SerpcastOptions extends TransportOptions {
 	now?: () => number;
 	/** Use this transport instead of creating one from the transport options (tests, sharing). */
 	transport?: ChainTransport;
-	/** How library-mode browser engines start searchcast (it gets `proxy` too). */
+	/** How library-mode browser engines start the browser runner (it gets `proxy` too). */
 	searchcast?: SearchcastLibraryOptions;
 	/**
 	 * The engines (by name) whose answers are checked with `isDecoy`: a decoy
@@ -144,8 +144,8 @@ export interface SearchResponse {
 	failures: EngineFailure[];
 }
 
-export interface Serpcast {
-	/** Run the chain for `query`; rejects with a `SerpcastError` (`exhausted`, `impersonation`). */
+export interface Searchcast {
+	/** Run the chain for `query`; rejects with a `SearchcastError` (`exhausted`, `impersonation`). */
 	search(query: string, options: SearchOptions): Promise<SearchResponse>;
 	/** Drop the session of `engine` (by name), or of every engine. */
 	clearSessions(engine?: string): Promise<void>;
@@ -208,7 +208,7 @@ function decoyProne(engine: Engine): boolean {
 }
 
 /** `decoyGuard` in its object form, checked (a RangeError when malformed). */
-function decoyGuard(guard: SerpcastOptions['decoyGuard']): {
+function decoyGuard(guard: SearchcastOptions['decoyGuard']): {
 	include: Set<string>;
 	exclude: Set<string>;
 } {
@@ -218,14 +218,14 @@ function decoyGuard(guard: SerpcastOptions['decoyGuard']): {
 			: (guard as DecoyGuard);
 	if (typeof object !== 'object' || object === null)
 		throw new RangeError(
-			'serpcast: decoyGuard must be an array of engine names or {include?, exclude?}',
+			'searchcast: decoyGuard must be an array of engine names or {include?, exclude?}',
 		);
 	const include = checkNames('decoyGuard.include', object.include);
 	const exclude = checkNames('decoyGuard.exclude', object.exclude);
 	return {include: new Set(include), exclude: new Set(exclude)};
 }
 
-export function createSerpcast(options: SerpcastOptions = {}): Serpcast {
+export function createSearchcast(options: SearchcastOptions = {}): Searchcast {
 	checkTransportOptions(options); // even when a transport is injected: fail loud
 	checkNumber('cooldownMs', options.cooldownMs, {zero: true});
 	checkNumber('sessionIdleMs', options.sessionIdleMs);
@@ -377,7 +377,7 @@ export function createSerpcast(options: SerpcastOptions = {}): Serpcast {
 					const message = `${name}: skipped, blocked earlier, cooling down until ${new Date(until).toISOString()}`;
 					failures.push({
 						engine: name,
-						error: new SerpcastError('blocked', message),
+						error: new SearchcastError('blocked', message),
 					});
 					continue;
 				}
@@ -391,7 +391,7 @@ export function createSerpcast(options: SerpcastOptions = {}): Serpcast {
 						const message = `${name}: decoy page, unrelated to the query terms ${decoyTerms(query).join(' ')} (top results: ${titles})`;
 						failures.push({
 							engine: name,
-							error: new SerpcastError('decoy', message),
+							error: new SearchcastError('decoy', message),
 						});
 						continue;
 					}
@@ -404,7 +404,7 @@ export function createSerpcast(options: SerpcastOptions = {}): Serpcast {
 				} catch (error) {
 					if (signal?.aborted) throw signal.reason;
 					if (
-						!(error instanceof SerpcastError) ||
+						!(error instanceof SearchcastError) ||
 						error.kind === 'impersonation'
 					)
 						throw error;
@@ -421,7 +421,7 @@ export function createSerpcast(options: SerpcastOptions = {}): Serpcast {
 			const detail = failures
 				.map((f) => `${f.engine}: ${f.error.kind}`)
 				.join(', ');
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'exhausted',
 				engines.length === 0
 					? 'no engines to search'

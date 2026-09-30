@@ -1,3 +1,4 @@
+> Names changed since this was written, see [ADR 0005](0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md): read "serpcast" here as `searchcast`, "serpcast-recipe" as `@searchcast/recipe`, and "searchcast" (the browser runner) as `@searchcast/browser`.
 # Engine traffic uses libcurl-impersonate (via impers) with one pinned Chrome and our own header tables
 
 ## Status

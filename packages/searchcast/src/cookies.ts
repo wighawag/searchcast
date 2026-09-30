@@ -1,4 +1,4 @@
-// The transport session's cookies. serpcast owns them (libcurl's cookie engine
+// The transport session's cookies. searchcast owns them (libcurl's cookie engine
 // is never used) so the `cookie` header lands where Chrome puts it in the
 // header table. RFC 6265 storage and matching, Chrome's send order (longest
 // path first, then oldest). SameSite is not enforced (not even stored): a
@@ -14,7 +14,7 @@
 // delete) an `HttpOnly` cookie, and it never sees one (RFC 6265 5.3 step 11,
 // as Chrome). Decisions: work/notes/observations/2026-09-29-recipe-set-cookie-decisions.md.
 
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 
 /** One stored cookie; plain JSON, so a caller's state store can keep it. */
 export interface StoredCookie {
@@ -234,7 +234,7 @@ export function documentCookies(
 			parsed = undefined;
 		}
 		if (parsed?.protocol !== 'http:' && parsed?.protocol !== 'https:')
-			throw new SerpcastError('recipe', `not an http(s) URL: ${url}`);
+			throw new SearchcastError('recipe', `not an http(s) URL: ${url}`);
 		return parsed;
 	};
 	return {
