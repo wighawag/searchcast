@@ -6,14 +6,17 @@
 // whether impersonation is active (no network request without `--remote`);
 // `install-recipes` installs a recipe set from a checksum-pinned archive (a
 // URL is downloaded only then, and only when typed); `recipes list` shows the
-// installed sets.
+// installed sets. `serve` and `browser-query` are the browser runner's
+// commands, run by the optional `@searchcast/browser` (see browser-cli.ts).
 //
 // Exit codes: 0 on success (for `query`, `{recipe, results}` as JSON on
 // stdout, results empty only when the recipe's `empty` selector matched); 1 on
 // a failure, with `searchcast: <kind>: <message>` on stderr for a search failure
 // (an unreadable or invalid recipe file is a `recipe` failure) or
 // `searchcast: <message>` for a failed install, and for `doctor` when the
-// report is not healthy; 2 on a usage error.
+// report is not healthy; 2 on a usage error. `serve` and `browser-query` keep
+// the browser runner's own messages and exit codes, and exit with 1 when
+// `@searchcast/browser` is not installed.
 import {parseArgs} from 'node:util';
 import {RecipeError} from '@searchcast/recipe';
 import {loadRecipeFile} from '@searchcast/recipe/node';
@@ -23,6 +26,7 @@ import {
 	SearchcastError,
 	usage,
 } from './index.js';
+import {isBrowserCommand, runBrowserCli} from './browser-cli.js';
 import {doctor, formatReport, healthy} from './doctor.js';
 import {InstallError, installLibcurl} from './install.js';
 import {installRecipes} from './install-recipes.js';
@@ -130,6 +134,8 @@ async function doctorCommand(values: Values) {
 }
 
 async function main(argv: string[]): Promise<void> {
+	// Before any parsing: the browser runner's flags are its own.
+	if (isBrowserCommand(argv)) return runBrowserCli(argv);
 	let parsed;
 	try {
 		parsed = parseArgs({

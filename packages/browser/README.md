@@ -35,24 +35,11 @@ A failure is never an empty result list: `search` rejects with a `SearchcastErro
 
 The browser runs headful by default. On a server without a display, `startXvfb({executable})` starts a private virtual display for it (authenticated with a fresh cookie, no TCP or abstract socket); pass its `env` as the browser's `env`. `headless: true` works too, but is easier for sites to tell apart from a person. The browser only loads the pages it is asked for: background networking, component updates, sync and pings are off.
 
-The main entry also exports `Browser`, `Page` and `CdpConnection` (the DevTools layer), `createSearchcastServer` (the HTTP API below, as a Node `http.Server`), and the recipe helpers `parseRecipe`, `loadRecipeFile`, `loadRecipes` and `RecipeError`.
+The main entry also exports `Browser`, `Page` and `CdpConnection` (the DevTools layer), `createSearchcastServer` (the HTTP API, as a Node `http.Server`), and the recipe helpers `parseRecipe`, `loadRecipeFile`, `loadRecipes` and `RecipeError`.
 
 ## HTTP API
 
-- `GET /search?q=<query>&recipe=<name>`: `recipe` may be omitted when only one is loaded. Returns `{recipe, query, results: [{title, url, ...}], elapsedMs}`.
-- `GET /recipes`: `{recipes: [names]}`.
-- `GET /health`: `{ok: true}`.
-
-A failure is never an empty result list. It is an error status with `{error, message}`:
-
-| `error`   | Status | Meaning                                                          |
-| --------- | ------ | ---------------------------------------------------------------- |
-| `blocked` | 502    | a `blocked` selector or `blockedUrl` pattern matched             |
-| `recipe`  | 502    | the page does not match the recipe (e.g. submit element missing) |
-| `timeout` | 504    | neither `ready` nor `empty` appeared within `timeoutMs`          |
-| `browser` | 503    | the browser could not be started or reached                      |
-
-An empty list only comes back when the recipe's `empty` selector matched.
+`createSearchcastServer(searchcast, recipes)` serves `GET /search`, `GET /recipes` and `GET /health`, the API that `searchcast serve` serves: see [its HTTP API](https://github.com/wighawag/searchcast#http-api) in the searchcast README.
 
 ## Recipes
 
@@ -66,50 +53,9 @@ import {runCli} from '@searchcast/browser/cli';
 await runCli(['serve', '--recipes', './recipes', '--listen', '127.0.0.1:8931']);
 ```
 
-`runCli(argv)` is the command line that the `searchcast` 0.1.x bin ran, as a function: `searchcast serve` and `searchcast browser-query` (the one-shot query that 0.1.x called `searchcast query`) from the `searchcast` package call it with their arguments unchanged. It writes errors as `searchcast: <message>` and exits the process with code 2 on a usage error; `serve` exits with 0 on SIGINT, SIGTERM or `--idle-exit`. Nothing runs on import. To run it as a service, install `searchcast` and `@searchcast/browser` side by side (`npm install -g searchcast @searchcast/browser`); the flags are the ones below.
+`runCli(argv)` is the command line that the `searchcast` 0.1.x bin ran, as a function: `searchcast serve` and `searchcast browser-query` (the one-shot query that 0.1.x called `searchcast query`) from the `searchcast` package call it with their arguments unchanged. It writes errors as `searchcast: <message>` and exits the process with code 2 on a usage error; `serve` exits with 0 on SIGINT, SIGTERM or `--idle-exit`. Nothing runs on import.
 
-| Option                  | Default                                                                                            |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `--listen <where>`      | `127.0.0.1:8931`; also `/path.sock`, or `systemd` for a socket passed by systemd socket activation |
-| `--idle-exit <seconds>` | never; exit after this long with no request in flight                                              |
-| `--chrome <path>`       | `$SEARCHCAST_CHROME`, then `PATH`                                                                  |
-| `--profile <dir>`       | `$XDG_STATE_HOME/searchcast/profile`                                                               |
-| `--ephemeral`           | off; use a fresh profile in a temporary directory, deleted on exit                                 |
-| `--xvfb <path>`         | none; run the browser on its own Xvfb display                                                      |
-| `--proxy <url>`         | none                                                                                               |
-| `--concurrency <n>`     | `2` tabs                                                                                           |
-| `--chrome-arg=<arg>`    | extra browser argument, repeatable; the `=` form is required for values starting with `-`          |
-
-### On demand, with systemd
-
-`--listen systemd` and `--idle-exit` together make an instance that costs nothing until used: a `.socket` unit holds the listening socket, the first connection starts the service, and it exits after the idle period, to be started again by the next connection.
-
-```ini
-# searchcast.socket
-[Socket]
-ListenStream=/run/searchcast/searchcast.sock
-
-# searchcast.service
-[Service]
-ExecStart=/usr/bin/searchcast serve --listen systemd --idle-exit 600 --ephemeral --xvfb /usr/bin/Xvfb --recipes /etc/searchcast/recipes
-PrivateTmp=true
-```
-
-## SearXNG
-
-A SearXNG engine queries a `searchcast serve` socket, so its results merge with SearXNG's other engines. It ships in the `searchcast` package at `integrations/searxng/searchcast.py`, the same path as in `searchcast` 0.1.x, not in this package. SearXNG loads it from an absolute path, so nothing is copied into SearXNG itself:
-
-```yaml
-engines:
-  - name: searchcast-web
-    engine: /path/to/node_modules/searchcast/integrations/searxng/searchcast
-    shortcut: scw
-    socket_path: /run/searchcast/searchcast.sock
-    recipe: web
-    timeout: 15.0
-```
-
-`socket_path` may reference environment variables (`$VAR`), so one settings file can serve several instances. A `blocked` answer raises SearXNG's CAPTCHA exception and any other failure an API exception, so both appear in `unresponsive_engines` rather than as missing results.
+To run it as a service, install `searchcast` and `@searchcast/browser` side by side (`npm install -g searchcast @searchcast/browser`). The flags, the systemd socket activation example, the HTTP API and the SearXNG engine (shipped in the `searchcast` package at `integrations/searxng/searchcast.py`) are documented in the searchcast README: [Serving from a real browser (`searchcast serve`)](https://github.com/wighawag/searchcast#serving-from-a-real-browser-searchcast-serve).
 
 ## Develop
 
@@ -119,7 +65,7 @@ pnpm build
 SEARCHCAST_CHROME=/path/to/chromium pnpm test
 ```
 
-The browser tests run against a local fixture site and are skipped when no browser is found.
+The browser tests run against a local fixture site and are skipped when no browser is found. The end-to-end tests of `searchcast serve` and `searchcast browser-query` (which run this package through the `searchcast` bin) are in `packages/searchcast`.
 
 ## License
 

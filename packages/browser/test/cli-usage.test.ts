@@ -1,24 +1,35 @@
-// The CLI's usage text and usage errors, through the test launcher (the built
-// `./cli` entry as a process). These need no browser: every case here fails or
-// answers before one is started. The usage text is searchcast 0.1.2's, except
+// The CLI's usage text and usage errors: `runCli` from the built `./cli` entry,
+// run in a process of its own with the arguments given. These need no browser:
+// every case here fails or answers before one is started. The `searchcast`
+// bin's delegation to it (`searchcast serve`, `searchcast browser-query`) and
+// the end-to-end cases are tested in packages/searchcast.
+// The usage text is searchcast 0.1.2's, except
 // the one-shot query line, now spelled `browser-query` (the `searchcast` bin's
 // `query` is the HTTP query).
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {afterAll, describe, expect, it} from 'vitest';
 
-const launcher = resolve(import.meta.dirname, 'cli-launcher.mjs');
+const cli = pathToFileURL(resolve(import.meta.dirname, '..', 'dist', 'cli.js'));
+// `node -e <script> -- <args>`: process.argv is [node, ...args].
+const script = `import {runCli} from ${JSON.stringify(cli.href)};
+runCli(process.argv.slice(1));`;
 const work = mkdtempSync(join(tmpdir(), 'searchcast-cli-usage-'));
 afterAll(() => rmSync(work, {recursive: true, force: true}));
 
 function run(args: string[], env: NodeJS.ProcessEnv = {}) {
-	return spawnSync(process.execPath, [launcher, ...args], {
-		encoding: 'utf8',
-		env: {...process.env, ...env},
-		timeout: 20_000,
-	});
+	return spawnSync(
+		process.execPath,
+		['--input-type=module', '-e', script, '--', ...args],
+		{
+			encoding: 'utf8',
+			env: {...process.env, ...env},
+			timeout: 20_000,
+		},
+	);
 }
 
 const USAGE = `searchcast: turn a web search form into a JSON API by driving a real browser

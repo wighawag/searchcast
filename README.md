@@ -9,7 +9,7 @@ Getting keyless web search results today usually means running SearXNG. What Sea
 - Engines are tried as an ordered **engine chain**, first answer wins, with a real browser (the browser runner) as the fallback when HTTP is blocked.
 - searchcast is **not** an anonymity tool, and it is built so one can use it safely: the caller injects the proxy, the state store and the recipe set; searchcast makes no network call the caller did not cause and writes nothing to disk on its own ([ADR 0002](docs/adr/0002-policy-free-caller-injects-egress-state-recipes.md)).
 
-Status: in development (0.x; the API may still change between minor versions). Available: the engine chain with its state store, the transport, the declarative recipe runner, code recipes and browser engines, with `searchcast query` for recipe development, `searchcast install-libcurl` to install the native library, `searchcast doctor` to check it, and `searchcast install-recipes` to install a checksum-pinned set of recipes.
+Status: in development (0.x; the API may still change between minor versions). Available: the engine chain with its state store, the transport, the declarative recipe runner, code recipes and browser engines, with `searchcast query` for recipe development, `searchcast install-libcurl` to install the native library, `searchcast doctor` to check it, `searchcast install-recipes` to install a checksum-pinned set of recipes, and `searchcast serve` to serve recipes from a real browser as a JSON API (with `@searchcast/browser` installed).
 
 searchcast was called **serpcast** until 0.2.0, and the name `searchcast` 0.1.x was the browser runner: see [Upgrading from serpcast](#upgrading-from-serpcast) and [Upgrading from searchcast 0.1.x](#upgrading-from-searchcast-01x). Every rename is recorded in [ADR 0005](docs/adr/0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md).
 
@@ -20,7 +20,7 @@ This repository is a pnpm workspace; every package is released from it.
 | package | what it is | license |
 | ------- | ---------- | ------- |
 | [`searchcast`](packages/searchcast) | The library (transport, recipe runners, engine chain) and the `searchcast` CLI. This README. | AGPL-3.0-only |
-| [`@searchcast/browser`](packages/browser) | The browser runner: runs a recipe in a real Chromium or Chrome. An optional peer dependency of `searchcast`, needed only for library-mode browser engines. Formerly the `searchcast` package 0.1.x. | AGPL-3.0-only |
+| [`@searchcast/browser`](packages/browser) | The browser runner: runs a recipe in a real Chromium or Chrome. An optional peer dependency of `searchcast`, needed only for library-mode browser engines, `searchcast serve` and `searchcast browser-query`. Formerly the `searchcast` package 0.1.x. | AGPL-3.0-only |
 | [`@searchcast/recipe`](packages/recipe) | The recipe schema, its TypeScript types and its validator, zero dependencies. Shared by `searchcast` and `@searchcast/browser` so one recipe file describes a site for both; MIT so projects under any license can share the format ([ADR 0003](docs/adr/0003-shared-recipe-schema-mit-package.md)). Formerly `serpcast-recipe`. | MIT |
 | `@searchcast/libcurl-<os>-<arch>` (to come) | The pinned libcurl-impersonate for one platform, installed with `searchcast` as an optional dependency, so no separate install step is needed. Until then, use `searchcast install-libcurl`. | per upstream |
 
@@ -51,7 +51,13 @@ The old names, the old variable and the old directory are no longer read from th
 
 `searchcast` 0.1.x was the browser runner. It is now the library [`@searchcast/browser`](packages/browser), which exports what `searchcast` 0.1.2 exported (`Searchcast`, `SearchcastError`, `findChrome`, ...): replace `searchcast` with `@searchcast/browser` in your imports (`npm install @searchcast/browser`). Its `Searchcast` and `SearchcastError` are not this package's (this package's `SearchcastError` has a `kind`, the browser runner's a `code`).
 
-The command line stays on the `searchcast` bin: `searchcast serve`, with the same flags and behaviour (systemd socket activation, `--idle-exit`, `--xvfb`, Unix sockets), delegating to `@searchcast/browser`, which must then be installed next to it (`npm install -g searchcast @searchcast/browser`). The browser one-shot query is `searchcast browser-query` (`searchcast query` is the HTTP query), and the SearXNG engine stays at `integrations/searxng/searchcast.py` in the `searchcast` package. `serve` and `browser-query` land in the same 0.2.0 release as this rename.
+The command line stays on the `searchcast` bin: [`searchcast serve`](#serving-from-a-real-browser-searchcast-serve), with the same flags, defaults, messages and exit codes (systemd socket activation, `--idle-exit`, `--xvfb`, Unix sockets), delegating to `@searchcast/browser`. **After upgrading, install `@searchcast/browser` next to `searchcast`**, and existing systemd units and SearXNG settings work unchanged:
+
+```sh
+npm install -g searchcast @searchcast/browser
+```
+
+Without it, `searchcast serve` exits with code 1 and one line saying to install it. The browser one-shot query that 0.1.x called `searchcast query` is now `searchcast browser-query` (`searchcast query` is the HTTP query), and the SearXNG engine stays at `integrations/searxng/searchcast.py` in the `searchcast` package. The command must come first (`searchcast serve --listen ...`, as every unit writes it): 0.1.x also took options before it.
 
 ## Transport (libcurl-impersonate)
 
@@ -459,6 +465,92 @@ The words after the options are joined into one query. The library is found as d
 
 `install-libcurl`, `install-recipes`, `recipes list` and `doctor` use the same exit codes: `0` success, `1` a failed install (`searchcast: <message>` on stderr) or an unhealthy `doctor` report, `2` a usage error.
 
+## Serving from a real browser (`searchcast serve`)
+
+`searchcast serve` runs recipes in a real browser and serves them as a JSON API; `searchcast browser-query` runs one recipe once in it, to develop a recipe. Both are the browser runner's command line (searchcast 0.1.x's `serve` and `query`), run by [`@searchcast/browser`](packages/browser), which must be installed next to `searchcast`. Neither needs libcurl-impersonate (nor loads it), and the HTTP commands never need `@searchcast/browser`.
+
+```sh
+npm install -g searchcast @searchcast/browser
+searchcast browser-query --recipe ./recipes/web.json "some query"
+searchcast serve --recipes ./recipes --listen 127.0.0.1:8931 --proxy socks5://127.0.0.1:1080
+curl 'http://127.0.0.1:8931/search?recipe=web&q=some+query'
+```
+
+Requires Node 22+ and a Chromium or Chrome executable (`--chrome`, `$SEARCHCAST_CHROME`, or `chromium`/`chrome` on `PATH`). `searchcast serve --help` prints every flag.
+
+The browser runs headful by default. On a server without a display, pass `--xvfb $(command -v Xvfb)`: searchcast starts a private virtual display for it (authenticated with a fresh cookie, no TCP or abstract socket). `--headless` works too, but is easier for sites to tell apart from a person.
+
+| Option                  | Default                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `--recipes <file\|dir>` | required for `serve`, repeatable; each `*.json` in a directory is one recipe                       |
+| `--recipe <file>`       | required for `browser-query`                                                                       |
+| `--listen <where>`      | `127.0.0.1:8931`; also `/path.sock`, or `systemd` for a socket passed by systemd socket activation |
+| `--idle-exit <seconds>` | never; exit after this long with no request in flight                                              |
+| `--chrome <path>`       | `$SEARCHCAST_CHROME`, then `PATH`                                                                  |
+| `--profile <dir>`       | `$XDG_STATE_HOME/searchcast/profile`                                                               |
+| `--ephemeral`           | off; use a fresh profile in a temporary directory, deleted on exit                                 |
+| `--xvfb <path>`         | none; run the browser on its own Xvfb display                                                      |
+| `--headless`            | off                                                                                                |
+| `--proxy <url>`         | none                                                                                               |
+| `--concurrency <n>`     | `2` tabs                                                                                           |
+| `--chrome-arg=<arg>`    | extra browser argument, repeatable; the `=` form is required for values starting with `-`          |
+
+The browser only loads the pages it is asked for: background networking, component updates, sync and pings are off.
+
+| Exit code | Meaning |
+| --------: | ------- |
+| `0` | `browser-query` answered (`{recipe, query, results, elapsedMs}` as JSON on stdout), or `serve` stopped on SIGINT, SIGTERM or `--idle-exit`. |
+| `1` | `@searchcast/browser` is not installed: `searchcast: serve needs @searchcast/browser, which is not installed: ...` on stderr. |
+| `2` | A usage error or a failure, as in 0.1.x: `searchcast: <message>` on stderr (a search failure is `searchcast: <code>: <message>`). |
+
+### On demand, with systemd
+
+`--listen systemd` and `--idle-exit` together make an instance that costs nothing until used: a `.socket` unit holds the listening socket, the first connection starts the service, and it exits after the idle period, to be started again by the next connection.
+
+```ini
+# searchcast.socket
+[Socket]
+ListenStream=/run/searchcast/searchcast.sock
+
+# searchcast.service
+[Service]
+ExecStart=/usr/bin/searchcast serve --listen systemd --idle-exit 600 --ephemeral --xvfb /usr/bin/Xvfb --recipes /etc/searchcast/recipes
+PrivateTmp=true
+```
+
+### HTTP API
+
+- `GET /search?q=<query>&recipe=<name>`: `recipe` may be omitted when only one is loaded. Returns `{recipe, query, results: [{title, url, ...}], elapsedMs}`.
+- `GET /recipes`: `{recipes: [names]}`.
+- `GET /health`: `{ok: true}`.
+
+A failure is never an empty result list. It is an error status with `{error, message}`:
+
+| `error`   | Status | Meaning                                                          |
+| --------- | ------ | ---------------------------------------------------------------- |
+| `blocked` | 502    | a `blocked` selector or `blockedUrl` pattern matched             |
+| `recipe`  | 502    | the page does not match the recipe (e.g. submit element missing) |
+| `timeout` | 504    | neither `ready` nor `empty` appeared within `timeoutMs`          |
+| `browser` | 503    | the browser could not be started or reached                      |
+
+An empty list only comes back when the recipe's `empty` selector matched. searchcast's own [endpoint-mode browser engines](#browser-engines) call this API.
+
+### SearXNG
+
+A SearXNG engine queries a `searchcast serve` socket, so its results merge with SearXNG's other engines. It ships in the `searchcast` package at `integrations/searxng/searchcast.py`, the same path as in `searchcast` 0.1.x, and that path is kept stable (packagers and SearXNG settings name it). SearXNG loads it from an absolute path, so nothing is copied into SearXNG itself:
+
+```yaml
+engines:
+  - name: searchcast-web
+    engine: /path/to/node_modules/searchcast/integrations/searxng/searchcast
+    shortcut: scw
+    socket_path: /run/searchcast/searchcast.sock
+    recipe: web
+    timeout: 15.0
+```
+
+`socket_path` may reference environment variables (`$VAR`), so one settings file can serve several instances. A `blocked` answer raises SearXNG's CAPTCHA exception and any other failure an API exception, so both appear in `unresponsive_engines` rather than as missing results.
+
 ## Size discipline (per-module LOC)
 
 Every module stays small with one responsibility. Per-module LOC is tracked here as a first-class quality signal. `target` is a rough ceiling (a ceiling, not a promise); `LOC` is the actual line count of the source file. Each task that adds or grows a module updates its row.
@@ -491,10 +583,11 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/post.ts` | 148 | 160 |
 | `src/searchcast-endpoint.ts` | 182 | 170 |
 | `src/doctor.ts` | 173 | 180 |
-| `src/cli.ts` | 186 | 190 |
+| `src/cli.ts` | 192 | 200 |
+| `src/browser-cli.ts` | 64 | 70 |
 | `src/html.ts` | 126 | 150 |
 | `src/chrome.ts` | 361 | 150 |
-| `src/index.ts` | 152 | 160 |
+| `src/index.ts` | 158 | 160 |
 | `src/response.ts` | 98 | 120 |
 | `src/store.ts` | 63 | 80 |
 | `src/errors.ts` | 45 | 50 |
@@ -504,7 +597,7 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/data-dir.ts` | 95 | 100 |
 | `src/deprecated.ts` | 24 | 40 |
 
-**Total own source: 5471 LOC** (`packages/searchcast/src`) (excluding deps).
+**Total own source: 5547 LOC** (`packages/searchcast/src`) (excluding deps).
 
 ## Develop
 
@@ -518,6 +611,8 @@ pnpm test
 `pnpm format:check && pnpm build && pnpm test` is the verify gate (`dorfl.json`) and what CI runs on every push and pull request. Tests run against the built packages, so build before testing.
 
 The transport tests that need the native library run only when `SEARCHCAST_LIBCURL_PATH` points at a libcurl-impersonate shared library (and the plain-libcurl strict-mode tests only when `SEARCHCAST_TEST_PLAIN_LIBCURL` points at a plain libcurl); otherwise they are skipped with a message. CI installs the pinned release with `searchcast install-libcurl` itself (into a temporary data directory, checksum verified) and sets both, so they always run there.
+
+The browser tests (`packages/browser`) and the end-to-end tests of `searchcast serve` and `searchcast browser-query` (`packages/searchcast/test/serve.test.ts`, which run the real bin) need a Chromium or Chrome (`SEARCHCAST_CHROME`, or `chromium`/`chrome` on `PATH`) and are skipped without one; CI runs them with Google Chrome. Some of the serve cases also need `Xvfb` (or `SEARCHCAST_TEST_XVFB`), `systemd-socket-activate`, `unshare`, or a Python that can import SearXNG (`SEARCHCAST_TEST_SEARXNG_PYTHON`), and are skipped without them.
 
 ## Release
 
