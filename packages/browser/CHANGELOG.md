@@ -1,5 +1,16 @@
 # @searchcast/browser
 
+## 0.1.0
+
+### Minor Changes
+
+- d391568: First release under the new name `@searchcast/browser`: the browser runner published as `searchcast` 0.1.x, now a library with no bin. The main entry exports exactly what `searchcast` 0.1.2 exported (`Searchcast`, `SearchcastError`, `Browser`, `Page`, `findChrome`, `CdpConnection`, `startXvfb`, `createSearchcastServer`, the recipe re-exports and their types), unchanged. The command line moved to the `./cli` entry as `runCli(argv)`, which the `searchcast` package's `searchcast serve` and `searchcast browser-query` call with the same flags, defaults, messages, exit codes and systemd socket activation as the 0.1.x `searchcast serve` and `searchcast query`. The same entry exports `browserCommand(argv)`, the command an argv would run under the runner's options, which the `searchcast` bin uses to accept options before the command as 0.1.x did.
+
+### Patch Changes
+
+- Updated dependencies [691d8e2]
+  - @searchcast/recipe@0.1.0
+
 The versions below were released as the `searchcast` package (0.1.x), the browser runner with the `searchcast` bin. It is now `@searchcast/browser`, and its command line is `searchcast serve` / `searchcast browser-query` from the `searchcast` package.
 
 ## 0.1.2

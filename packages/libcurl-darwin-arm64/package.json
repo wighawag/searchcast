@@ -1,6 +1,6 @@
 {
 	"name": "@searchcast/libcurl-darwin-arm64",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "The pinned libcurl-impersonate shared library for macOS arm64, installed automatically with searchcast. Contains only the library and its license notices.",
 	"license": "MIT AND curl AND Apache-2.0 AND BSD-3-Clause AND Zlib",
 	"keywords": [
