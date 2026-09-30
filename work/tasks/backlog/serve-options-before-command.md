@@ -17,6 +17,8 @@ The way decision 2 itself names: `@searchcast/browser/cli` exports what is neede
 
 Otherwise behaviour is as today (HTTP commands, usage errors). The added export is additive (a minor in `@searchcast/browser`'s pending 0.1.0; no second changeset needed unless the export warrants a line, decide), and the changeset of `searchcast` from `searchcast-serve-command` loses its sentence saying 0.1.x also accepted options before the command (edit that pending changeset file) since that is no longer a difference.
 
+> RETRY HANDOFF (conductor, after PR #13 was blocked): the first attempt (branch `work/task-serve-options-before-command`, PR #13, closed) was right except one test: the Chrome e2e case "serves with options before the command" asserted `readdirSync(tmp)` is empty, and in CI Chrome itself leaves `com.google.Chrome.chrome_chrome_url_fetcher_*` in TMPDIR. Assert only that no `searchcast-profile-*` entry remains, exactly like the existing ephemeral-profile case. If that branch is available, build on it rather than starting over.
+
 ## Acceptance criteria
 
 - [ ] `searchcast --ephemeral serve ...`, `searchcast --listen systemd serve ...` and `searchcast --headless browser-query --recipe r q` behave as with the command first (Chrome-free tests: the usage errors, `--listen systemd` refusal and missing-package line reached through that order; and one Chrome e2e case with an option before `serve`).
