@@ -1,25 +1,24 @@
 {
-	"name": "serpcast-recipe",
-	"version": "0.2.0",
-	"description": "The shared recipe schema, types and validator for serpcast (HTTP) and searchcast (browser). One recipe file describes a site for both runners.",
+	"name": "@searchcast/recipe",
+	"version": "0.0.0",
+	"description": "The shared recipe schema, types and validator for searchcast (HTTP) and @searchcast/browser (real browser). One recipe file describes a site for both runners.",
 	"license": "MIT",
 	"keywords": [
 		"search",
 		"recipe",
 		"schema",
 		"scraping",
-		"serpcast",
 		"searchcast"
 	],
 	"author": "wighawag",
-	"homepage": "https://github.com/wighawag/serpcast/tree/main/packages/serpcast-recipe#readme",
+	"homepage": "https://github.com/wighawag/searchcast/tree/main/packages/recipe#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/wighawag/serpcast.git",
-		"directory": "packages/serpcast-recipe"
+		"url": "git+https://github.com/wighawag/searchcast.git",
+		"directory": "packages/recipe"
 	},
 	"bugs": {
-		"url": "https://github.com/wighawag/serpcast/issues"
+		"url": "https://github.com/wighawag/searchcast/issues"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -36,7 +35,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"CHANGELOG.md"
 	],
 	"devDependencies": {
 		"@types/node": "^25.2.0",

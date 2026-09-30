@@ -15,8 +15,8 @@
 // `serpcast: <message>` for a failed install, and for `doctor` when the
 // report is not healthy; 2 on a usage error.
 import {parseArgs} from 'node:util';
-import {RecipeError} from 'serpcast-recipe';
-import {loadRecipeFile} from 'serpcast-recipe/node';
+import {RecipeError} from '@searchcast/recipe';
+import {loadRecipeFile} from '@searchcast/recipe/node';
 import {
 	createTransport,
 	runDeclarativeRecipe,

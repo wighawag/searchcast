@@ -20,7 +20,7 @@
 import * as css from 'css-select';
 import type {AnyNode, Document, Element} from 'domhandler';
 import {parseDocument} from 'htmlparser2';
-import type {FieldSpec} from 'serpcast-recipe';
+import type {FieldSpec} from '@searchcast/recipe';
 import {SerpcastError} from './errors.js';
 
 const SKIPPED = new Set(['script', 'style', 'template', 'noscript', 'head']);

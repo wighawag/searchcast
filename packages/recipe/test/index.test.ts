@@ -30,7 +30,7 @@ const formRecipe = {
 
 describe('entry', () => {
 	it('exports its package name', () => {
-		expect(packageName).toBe('serpcast-recipe');
+		expect(packageName).toBe('@searchcast/recipe');
 	});
 
 	it('does not export the node-only loaders', () => {
@@ -129,7 +129,7 @@ describe('loadRecipeFile', () => {
 		for (const dir of dirs) rmSync(dir, {recursive: true, force: true});
 	});
 	const tempDir = () => {
-		const dir = mkdtempSync(join(tmpdir(), 'serpcast-recipe-'));
+		const dir = mkdtempSync(join(tmpdir(), 'searchcast-recipe-'));
 		dirs.push(dir);
 		return dir;
 	};

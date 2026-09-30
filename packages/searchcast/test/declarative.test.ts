@@ -3,7 +3,7 @@
 // no native library. declarative-native.test.ts runs through the real one.
 
 import {afterAll, afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
-import {parseRecipe} from 'serpcast-recipe';
+import {parseRecipe} from '@searchcast/recipe';
 import {
 	runDeclarativeRecipe,
 	SerpcastError,

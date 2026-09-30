@@ -1,8 +1,14 @@
-# serpcast-recipe
+# @searchcast/recipe
 
-The recipe format for keyless search engines: the schema, its TypeScript types and its validator. It is shared by [serpcast](https://github.com/wighawag/serpcast) (runs a recipe over plain HTTP with a real browser's fingerprint) and [searchcast](https://github.com/wighawag/searchcast) (runs a recipe in a real browser), so one recipe file describes a site for both. It has no runtime dependencies and is MIT licensed so projects under any license can share the format.
+The recipe format for keyless search engines: the schema, its TypeScript types and its validator. It is shared by [searchcast](https://github.com/wighawag/searchcast) (runs a recipe over plain HTTP with a real browser's fingerprint) and [@searchcast/browser](https://github.com/wighawag/searchcast/tree/main/packages/browser) (runs a recipe in a real browser), so one recipe file describes a site for both. It has no runtime dependencies and is MIT licensed so projects under any license can share the format.
 
-The format is the one searchcast introduced: every recipe searchcast accepts is accepted here, with the same error messages. The one addition is the optional `decoyProne` field, which serpcast's engine chain reads and searchcast ignores.
+```sh
+npm install @searchcast/recipe
+```
+
+Formerly `serpcast-recipe`: same format, same API, same error messages. Only the package name changed; replace `serpcast-recipe` with `@searchcast/recipe` in your imports.
+
+The format is the one the browser runner introduced: every recipe it accepts is accepted here, with the same error messages. The one addition is the optional `decoyProne` field, which searchcast's engine chain reads and @searchcast/browser ignores.
 
 ## Recipes
 
@@ -41,13 +47,13 @@ A recipe is a JSON file. When loading a directory, each `*.json` file is one rec
 | `results.fields` | Field name to `{selector?, attr?}`. `selector` is relative to the item (omitted: the item itself). `attr` omitted reads visible text; `href` and `src` resolve to absolute URLs. `title` and `url` are required; results missing either are skipped. Other fields are passed through. |
 | `limit`          | Maximum results, default 10.                                                                                                                                                                                                                                                          |
 | `timeoutMs`      | Per-query budget, default 15000.                                                                                                                                                                                                                                                      |
-| `decoyProne`     | Optional boolean: the site sometimes answers with results unrelated to the query (a decoy page). serpcast's engine chain then checks this engine's answers for decoys; searchcast ignores it. `parseRecipe` keeps it in its output.                                                   |
+| `decoyProne`     | Optional boolean: the site sometimes answers with results unrelated to the query (a decoy page). searchcast's engine chain then checks this engine's answers for decoys; @searchcast/browser ignores it. `parseRecipe` keeps it in its output.                                        |
 
 Exactly one of `navigate` and `form` must be set.
 
 The `limit` and `timeoutMs` defaults are applied by the runner, not by the validator: `parseRecipe` leaves them undefined when absent, and the package exports them as `DEFAULT_LIMIT` (10) and `DEFAULT_TIMEOUT_MS` (15000) so both runners use the same values.
 
-`form` needs a real browser (it types into the page). serpcast runs recipes over HTTP, so it rejects a `form` recipe with a clear error; run it with searchcast. `requiresBrowser(recipe)` tells a runner which case it has.
+`form` needs a real browser (it types into the page). searchcast runs recipes over HTTP, so it rejects a `form` recipe with a clear error; run it with @searchcast/browser. `requiresBrowser(recipe)` tells a runner which case it has.
 
 ## API
 
@@ -61,7 +67,7 @@ import {
 	type Recipe,
 	type FieldSpec,
 	type Submit,
-} from 'serpcast-recipe';
+} from '@searchcast/recipe';
 
 // Validate an untrusted value (usually parsed JSON). Throws RecipeError with
 // the offending path in the message, e.g. `recipe "web": ready must be a
@@ -72,7 +78,7 @@ const recipe: Recipe = parseRecipe(JSON.parse(text), 'web');
 The main entry imports nothing from `node:*`, so it works anywhere. The file loaders are on a separate, Node-only subpath:
 
 ```ts
-import {loadRecipeFile, loadRecipes} from 'serpcast-recipe/node';
+import {loadRecipeFile, loadRecipes} from '@searchcast/recipe/node';
 
 // One file; the name defaults to the file name without its extension.
 const web = loadRecipeFile('./recipes/web.json');

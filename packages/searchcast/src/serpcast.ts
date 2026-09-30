@@ -49,7 +49,7 @@
 // Decisions: work/notes/observations/session-connection-reuse-decisions.md.
 // Decisions and alternatives: work/notes/observations/engine-chain-and-state-decisions.md.
 
-import type {Recipe} from 'serpcast-recipe';
+import type {Recipe} from '@searchcast/recipe';
 import {
 	createBrowserRunner,
 	isBrowserEngine,

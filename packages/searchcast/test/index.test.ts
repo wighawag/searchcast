@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 import {afterAll, describe, expect, it} from 'vitest';
-import {packageName as recipePackageName} from 'serpcast-recipe';
+import {packageName as recipePackageName} from '@searchcast/recipe';
 import {packageName, usage} from '../src/index.js';
 
 const run = promisify(execFile);
@@ -21,8 +21,8 @@ describe('serpcast placeholder', () => {
 		expect(usage()).toMatch(/^Usage: serpcast /);
 	});
 
-	it('resolves serpcast-recipe through the workspace', () => {
-		expect(recipePackageName).toBe('serpcast-recipe');
+	it('resolves @searchcast/recipe through the workspace', () => {
+		expect(recipePackageName).toBe('@searchcast/recipe');
 	});
 });
 

@@ -11,7 +11,7 @@ import {
 	type RequestOptions,
 } from 'node:http';
 import {request as httpsRequest} from 'node:https';
-import {DEFAULT_TIMEOUT_MS} from 'serpcast-recipe';
+import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import {normalizeResult, type SearchResult} from './declarative.js';
 import {SerpcastError} from './errors.js';
 import {checkNumber} from './options.js';

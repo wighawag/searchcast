@@ -25,7 +25,7 @@
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import type {Recipe} from 'serpcast-recipe';
+import type {Recipe} from '@searchcast/recipe';
 import {untilAborted} from './code.js';
 import type {SearchResult} from './declarative.js';
 import {SerpcastError} from './errors.js';

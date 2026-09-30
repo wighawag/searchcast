@@ -17,9 +17,9 @@ importers:
 
   packages/browser:
     dependencies:
-      serpcast-recipe:
-        specifier: ^0.1.0
-        version: 0.1.0
+      '@searchcast/recipe':
+        specifier: workspace:^
+        version: link:../recipe
     devDependencies:
       '@changesets/cli':
         specifier: ^2.31.1
@@ -51,6 +51,9 @@ importers:
 
   packages/searchcast:
     dependencies:
+      '@searchcast/recipe':
+        specifier: workspace:^
+        version: link:../recipe
       css-select:
         specifier: ^7.0.0
         version: 7.0.0
@@ -66,9 +69,6 @@ importers:
       searchcast:
         specifier: '>=0.1.1'
         version: 0.1.1
-      serpcast-recipe:
-        specifier: workspace:*
-        version: link:../recipe
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -848,9 +848,6 @@ packages:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
-
-  serpcast-recipe@0.1.0:
-    resolution: {integrity: sha512-LSrrKiWcaatb0qVuIJu7Udh+Hhla2gTSNDuu1ybnOlenyrObsurcU+r74p9AEJKqkW+aSS3/YtopV1POBvl6LA==}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -1757,8 +1754,6 @@ snapshots:
   searchcast@0.1.1: {}
 
   semver@7.8.5: {}
-
-  serpcast-recipe@0.1.0: {}
 
   shebang-command@2.0.0:
     dependencies:

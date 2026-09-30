@@ -16,7 +16,7 @@ import {createServer, type Server} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseRecipe, type Recipe} from 'serpcast-recipe';
+import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import {afterAll, afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {
 	chromiumProxy,

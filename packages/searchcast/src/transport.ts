@@ -42,7 +42,7 @@
 // POST, as in the browser. Decisions:
 // work/notes/observations/2026-09-29-post-requests-decisions.md.
 
-import {DEFAULT_TIMEOUT_MS} from 'serpcast-recipe';
+import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import {
 	headerTable,
 	IMPERSONATE_TARGET,
@@ -85,7 +85,7 @@ export interface TransportOptions {
 	proxy?: string;
 	/** Refuse to send unless libcurl-impersonate accepts the pinned target. Default true. */
 	strict?: boolean;
-	/** Per-request time limit in ms. Default `DEFAULT_TIMEOUT_MS` of serpcast-recipe. */
+	/** Per-request time limit in ms. Default `DEFAULT_TIMEOUT_MS` of @searchcast/recipe. */
 	timeoutMs?: number;
 	/** A PEM CA bundle to verify servers against, instead of the library's default. */
 	caPath?: string;

@@ -1,6 +1,7 @@
-// Node-only recipe loaders, published on the `serpcast-recipe/node` subpath so
-// the main entry stays usable without `node:fs`. Extracted unchanged from
-// searchcast's `src/recipe.ts` (searchcast@0.1.1).
+// Node-only recipe loaders, published on the `@searchcast/recipe/node` subpath
+// so the main entry stays usable without `node:fs`. Extracted unchanged from
+// the browser runner's `src/recipe.ts` (searchcast@0.1.1, now
+// @searchcast/browser).
 
 import {readFileSync, readdirSync, statSync} from 'node:fs';
 import {basename, extname, join} from 'node:path';

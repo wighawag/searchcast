@@ -137,7 +137,7 @@ describe('package wiring', () => {
 		expect(pkg.license).toBe('AGPL-3.0-only');
 	});
 
-	it('serpcast-recipe keeps its own README and MIT LICENSE', () => {
+	it('@searchcast/recipe keeps its own README and MIT LICENSE', () => {
 		const pkg = manifest('recipe');
 		expect(pkg.scripts.prepack).toBeUndefined();
 		expect(pkg.license).toBe('MIT');

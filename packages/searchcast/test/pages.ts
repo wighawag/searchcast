@@ -4,7 +4,7 @@
 
 import http from 'node:http';
 import type {AddressInfo} from 'node:net';
-import {parseRecipe, type Recipe} from 'serpcast-recipe';
+import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import type {RequestOptions, TransportResponse} from '../src/index.js';
 
 export interface Route {
