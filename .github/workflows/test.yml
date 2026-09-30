@@ -45,7 +45,8 @@ jobs:
           echo "SEARCHCAST_TEST_PLAIN_LIBCURL=$plain" >> "$GITHUB_ENV"
 
       # With the build above, the same gate as `verify` in dorfl.json.
-      # The browser tests (packages/browser) drive the runner's preinstalled
+      # The browser tests (packages/browser, and the searchcast serve
+      # end-to-end tests in packages/searchcast) drive the runner's preinstalled
       # Google Chrome against a local fixture site. --no-sandbox because
       # Ubuntu's AppArmor policy blocks the unprivileged user namespaces
       # Chrome's sandbox wants; the runner is disposable and the browser only

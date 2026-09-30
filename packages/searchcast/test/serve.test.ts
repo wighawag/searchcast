@@ -10,15 +10,27 @@ import {request} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {findChrome} from '../src/browser.js';
-import {startFixture} from './fixture.js';
+import {findChrome} from '@searchcast/browser';
+// The browser package's fixture site, shared rather than copied.
+import {startFixture} from '../../browser/test/fixture.js';
 
-// End-to-end tests of the CLI as a real process: test/cli-launcher.mjs runs
-// the built `./cli` entry (dist/cli.js, which `pnpm test` builds first) the way
-// the `searchcast` 0.1.x bin did. Skipped without a browser, like the browser
-// tests.
+// End-to-end tests of `searchcast serve` and `searchcast browser-query` as a
+// real process: the real `searchcast` bin (the built dist/cli.js; the verify
+// gate builds before it tests), delegating to `@searchcast/browser` (a
+// workspace devDependency here). Every node process runs with koffi hidden
+// (test/hide-modules.mjs), so each case also proves the browser commands need
+// neither koffi nor libcurl-impersonate. Skipped without a browser, like the
+// browser tests.
 const chrome = findChrome();
-const cli = resolve(import.meta.dirname, 'cli-launcher.mjs');
+if (!chrome)
+	console.warn(
+		'searchcast: no browser found, skipping the serve end-to-end tests (set SEARCHCAST_CHROME)',
+	);
+const bin = resolve(import.meta.dirname, '..', 'dist', 'cli.js');
+const hook = resolve(import.meta.dirname, 'hide-modules.mjs');
+// What follows `node` to run the bin: koffi hidden, as on a browser-only box.
+const cli = ['--import', hook, bin];
+process.env.SEARCHCAST_TEST_HIDE = 'koffi';
 const chromeArgs = (process.env.SEARCHCAST_TEST_CHROME_ARGS ?? '')
 	.split(' ')
 	.filter(Boolean)
@@ -157,7 +169,7 @@ describe.skipIf(!chrome)('the CLI', () => {
 		const child = spawn(
 			process.execPath,
 			[
-				cli,
+				...cli,
 				'serve',
 				'--recipes',
 				recipesDir,
@@ -238,7 +250,7 @@ describe.skipIf(!chrome)('the CLI', () => {
 					'-Un',
 					'--map-current-user',
 					process.execPath,
-					cli,
+					...cli,
 					'browser-query',
 					'--recipe',
 					recipe,
@@ -276,11 +288,11 @@ describe.skipIf(!chrome)('the CLI', () => {
 				[
 					'-l',
 					socketPath,
-					...['PATH', 'HOME', 'TMPDIR']
+					...['PATH', 'HOME', 'TMPDIR', 'SEARCHCAST_TEST_HIDE']
 						.filter((v) => process.env[v])
 						.flatMap((v) => ['-E', v]),
 					process.execPath,
-					cli,
+					...cli,
 					'serve',
 					'--recipes',
 					recipesDir,

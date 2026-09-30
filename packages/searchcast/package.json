@@ -41,7 +41,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"integrations/searxng/searchcast.py"
 	],
 	"dependencies": {
 		"@searchcast/recipe": "workspace:^",
