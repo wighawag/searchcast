@@ -19,6 +19,8 @@ Five packages, `@searchcast/libcurl-linux-x64`, `-linux-arm64`, `-darwin-x64`, `
 - **Changesets:** minor for each platform package and a minor for `searchcast` (platform packages as optional dependencies).
 - README (root and `searchcast`): install now brings the library on supported platforms; `install-libcurl` remains for others; how to check with `searchcast doctor`.
 
+> FORWARD-NOTE (conductor, freshness check after #16): the data-directory logic now lives in `packages/searchcast/src/data-dir.ts` (new and old directory), and `LibrarySource` already has `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH`, `LIBCURL_PATH`, `data directory`, `old data directory`; add `platform package` after them. The repo-wide pack check is `scripts/pack-check.mjs`: every non-private package must be listed in its `PUBLISHABLE` with its `extraFiles`/`allow`, so add the five platform packages there (their tarball is the library, the notices, README, package.json, and CHANGELOG if the check keeps requiring it). The pack check runs in `pnpm test` and in `release:ci`, so it must pass on a checkout where the payload has NOT been built (locally, and in CI for the four platforms not built there): decide how (for example, the check verifies the manifest and skips the payload file when absent, while each platform package's own `prepack` refuses to pack without it) and record it. `scripts/no-skips.mjs` makes CI fail on any skipped test, so the platform-package lookup test must really run in CI.
+
 ## Acceptance criteria
 
 - [ ] The build script verifies each archive's sha256 against the pin in the source before unpacking, rejects a mismatch (tested with a local fixture archive and a wrong pin, no network in tests), and reuses install-libcurl's validation and caps.
