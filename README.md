@@ -260,7 +260,7 @@ const {results} = await searchcast.search('some query', {engines: [myApi, loadRe
 
 The results are validated: an array of `{title, url, snippet?, ...}` with a non-empty `title` and `url` and every field a string (fields set to `undefined` are dropped). Anything else is a `recipe` error, and so is any throw that is not a `SearchcastError` (with the original as `cause`). `[]` is a valid answer: the module says the site has no results, and the chain stops there, so throw `recipeError` when the response is not one you understand. The whole search is bounded by `timeoutMs` (a `timeout` error); aborting the caller's `signal` rejects with its reason.
 
-searchcast ships no code recipe for a real site as part of the package: write your own, for engines whose terms allow automated access. The repo has one example to start from. To install a set of recipes someone publishes, see [Installing recipes](#installing-recipes-searchcast-install-recipes).
+searchcast ships no code recipe for a real site as part of the package: write your own, for engines whose terms allow automated access. The repo has two examples to start from. To install a set of recipes someone publishes, see [Installing recipes](#installing-recipes-searchcast-install-recipes).
 
 ### Example: Marginalia Search
 
@@ -278,6 +278,23 @@ const {results} = await searchcast.search('linear b', {engines: [marginalia], ma
 ```
 
 Or copy the file next to your private recipes and load it from there. It calls the URL-keyed API (`https://api.marginalia.nu/<key>/search/<query>?count=<n>`), which Marginalia lists as deprecated but working as long as the project does, because the current API takes the key in an `API-Key` header and searchcast's transport sends only Chrome's headers. It maps each result's `title`, `url` and `description` (as `snippet`), sends `maxResults` as `count` (clamped to 1..100), treats HTTP 503 and 429 (the rate limit) as `blocked` so the engine cools down, and a response without a `results` array as a `recipe` error. The key is part of the URL, so it appears in the URL that error messages name.
+
+### Example: Mwmbl
+
+[`examples/recipes/mwmbl.mjs`](examples/recipes/mwmbl.mjs) is a code recipe for [Mwmbl](https://mwmbl.org), a non-profit, open-source (AGPL-3.0) independent search engine whose [search API](https://developer.mwmbl.org/) is public and needs no key. It is an example, not an engine bundled with searchcast: like the Marginalia example, it lives in the repo, outside the published packages.
+
+The limits and terms (read 2026-09-30): without a key, the API allows 1,000 requests a month at 1 request per second, counted per IP address. That quota is shared by everyone who reaches the API from the same address, so behind a Tor exit or a VPN it may already be spent by others. Over the quota the API answers HTTP 429. An optional personal key from Mwmbl raises the quota; set it in `MWMBL_API_KEY`. [Mwmbl's terms](https://mwmbl.org/terms) forbid scraping and excessive automated queries, and its data is under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), so what you do with the results has to respect that licence. The recipe does not pace its requests: keep your own search rate within those limits.
+
+```ts
+import {createSearchcast, loadCodeRecipe} from 'searchcast';
+
+const searchcast = createSearchcast();
+// Reads MWMBL_API_KEY at each search; without it, uses the anonymous tier.
+const mwmbl = await loadCodeRecipe('./examples/recipes/mwmbl.mjs');
+const {results} = await searchcast.search('linear b', {engines: [mwmbl], maxResults: 10});
+```
+
+It calls `https://api.mwmbl.org/api/v2/search/?q=<query>`, adding `&api_key=<key>` only when `MWMBL_API_KEY` is set (Mwmbl takes the key as a query parameter, not a header). It maps each result's `title`, `url` and `content` (as `snippet`), cuts the list to `maxResults` (the API takes no count), treats HTTP 429 (the quota) and 503 as `blocked` so the engine cools down, and a response without a `results` array as a `recipe` error. The key is part of the URL, so it appears in the URL that error messages name.
 
 ## Browser engines
 
