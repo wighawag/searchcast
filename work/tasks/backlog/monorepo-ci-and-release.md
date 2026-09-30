@@ -2,7 +2,7 @@
 title: One CI workflow and one release workflow for every package, with a no-1.0 guard and pack checks
 slug: monorepo-ci-and-release
 spec: searchcast-monorepo
-blockedBy: [searchcast-serve-command]
+blockedBy: [serve-options-before-command]
 covers: [15, 16]
 ---
 
@@ -27,7 +27,7 @@ Make the repo's two workflows describe and guard the monorepo as it now is.
 
 ## Blocked by
 
-- searchcast-serve-command
+- serve-options-before-command
 
 ## Prompt
 
