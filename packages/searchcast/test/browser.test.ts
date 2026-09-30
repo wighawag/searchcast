@@ -414,10 +414,12 @@ describe('library mode', () => {
 		await expect(search).rejects.toThrow('stop');
 	});
 
-	it('uses the installed searchcast when none is injected (it has the shape serpcast uses)', async () => {
-		// pnpm installs the optional peer in this workspace; a consumer that
+	it('uses the installed @searchcast/browser when none is injected (it has the shape serpcast uses)', async () => {
+		// The optional peer is a workspace devDependency here; a consumer that
 		// does not install it gets browser-missing.test.ts's error instead.
-		const real = (await import('searchcast' as string)) as SearchcastModule;
+		const real = (await import(
+			'@searchcast/browser' as string
+		)) as SearchcastModule;
 		expect(typeof real.Searchcast).toBe('function');
 		expect(typeof real.findChrome).toBe('function');
 		expect(typeof real.startXvfb).toBe('function');
@@ -444,17 +446,17 @@ describe('isBrowserEngine', () => {
 	});
 });
 
-describe('the searchcast import', () => {
+describe('the @searchcast/browser import', () => {
 	it('is in browser.ts only, and dynamic', () => {
 		const src = fileURLToPath(new URL('../src/', import.meta.url));
 		const importing = readdirSync(src).filter((file) =>
-			/from ['"]searchcast['"]|import\(['"]?searchcast|const name = 'searchcast'/.test(
+			/from ['"](@searchcast\/browser|searchcast)['"]|import\(['"]?(@searchcast\/browser|searchcast)|const name = '(@searchcast\/browser|searchcast)'/.test(
 				readFileSync(join(src, file), 'utf8'),
 			),
 		);
 		expect(importing).toEqual(['browser.ts']);
 		expect(readFileSync(join(src, 'browser.ts'), 'utf8')).not.toMatch(
-			/from ['"]searchcast['"]/,
+			/from ['"](@searchcast\/browser|searchcast)['"]/,
 		);
 	});
 });

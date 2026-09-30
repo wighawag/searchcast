@@ -13,10 +13,12 @@ import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {findChrome} from '../src/browser.js';
 import {startFixture} from './fixture.js';
 
-// End-to-end tests of the CLI as a real process (the built dist/cli.js, which
-// `pnpm test` builds first). Skipped without a browser, like the browser tests.
+// End-to-end tests of the CLI as a real process: test/cli-launcher.mjs runs
+// the built `./cli` entry (dist/cli.js, which `pnpm test` builds first) the way
+// the `searchcast` 0.1.x bin did. Skipped without a browser, like the browser
+// tests.
 const chrome = findChrome();
-const cli = resolve(import.meta.dirname, '..', 'dist', 'cli.js');
+const cli = resolve(import.meta.dirname, 'cli-launcher.mjs');
 const chromeArgs = (process.env.SEARCHCAST_TEST_CHROME_ARGS ?? '')
 	.split(' ')
 	.filter(Boolean)
@@ -237,7 +239,7 @@ describe.skipIf(!chrome)('the CLI', () => {
 					'--map-current-user',
 					process.execPath,
 					cli,
-					'query',
+					'browser-query',
 					'--recipe',
 					recipe,
 					'--chrome',

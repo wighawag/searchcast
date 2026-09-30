@@ -1,4 +1,6 @@
-# searchcast
+# @searchcast/browser
+
+The versions below were released as the `searchcast` package (0.1.x), the browser runner with the `searchcast` bin. It is now `@searchcast/browser`, and its command line is `searchcast serve` / `searchcast browser-query` from the `searchcast` package.
 
 ## 0.1.2
 

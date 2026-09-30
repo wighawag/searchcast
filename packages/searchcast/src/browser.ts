@@ -2,8 +2,8 @@
 // fallback when HTTP is blocked. Two modes, told apart by the engine's
 // `searchcast` field:
 //
-// - library (`{recipe}`): serpcast imports `searchcast` (an optional peer
-//   dependency, imported here only, and only when such an engine runs) and
+// - library (`{recipe}`): serpcast imports `@searchcast/browser` (an optional
+//   peer dependency, imported here only, and only when such an engine runs) and
 //   starts it lazily with the caller's `searchcast` options and serpcast's
 //   proxy. One browser per serpcast instance, stopped by `close()`.
 // - endpoint (`{endpoint, recipe?}`): a running `searchcast serve`, over HTTP
@@ -69,11 +69,11 @@ export interface SearchcastLibraryOptions {
 	concurrency?: number;
 	/** Extra Chromium arguments. */
 	chromeArgs?: string[];
-	/** Use this module instead of importing `searchcast` (tests, or a fork). */
+	/** Use this module instead of importing `@searchcast/browser` (tests, or a fork). */
 	module?: SearchcastModule;
 }
 
-/** The part of the `searchcast` package serpcast uses. */
+/** The part of the `@searchcast/browser` package serpcast uses. */
 export interface SearchcastModule {
 	Searchcast: new (options: {
 		browser: {
@@ -220,15 +220,16 @@ export function createBrowserRunner(
 }
 
 async function importSearchcast(): Promise<SearchcastModule> {
-	// A variable specifier, so bundlers and tsc do not resolve it: searchcast
-	// is an optional peer dependency, needed only for library-mode engines.
-	const name = 'searchcast';
+	// A variable specifier, so bundlers and tsc do not resolve it:
+	// @searchcast/browser is an optional peer dependency, needed only for
+	// library-mode engines.
+	const name = '@searchcast/browser';
 	try {
 		return (await import(name)) as SearchcastModule;
 	} catch (cause) {
 		throw new SerpcastError(
 			'transport',
-			'searchcast is not installed: library-mode browser engines need the optional peer dependency "searchcast" (npm install searchcast)',
+			'@searchcast/browser is not installed: library-mode browser engines need the optional peer dependency "@searchcast/browser" (npm install @searchcast/browser)',
 			{cause},
 		);
 	}
