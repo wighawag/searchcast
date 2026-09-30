@@ -1,6 +1,8 @@
 // Locating the library, and what happens when there is none. No native library
 // is needed here. Tests that touch HOME or the data dir point them at a temp
-// dir and check the real ones are untouched.
+// dir and check the real ones are untouched. The platform packages linked in
+// this workspace (whose linux-x64 library CI builds) are hidden: the lookup
+// through them is tested in platform-package.test.ts.
 
 import {
 	existsSync,
@@ -14,7 +16,7 @@ import {
 } from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
 	createTransport,
 	dataDir,
@@ -25,6 +27,12 @@ import {
 } from '../src/index.js';
 import {locateLibrary} from '../src/libcurl.js';
 import {startH2Server} from './servers.js';
+
+vi.mock('node:module', async (original) =>
+	(await import('./hide-platform-packages.js')).hidingPlatformPackages(
+		await original<typeof import('node:module')>(),
+	),
+);
 
 const ENV_KEYS = [
 	'HOME',

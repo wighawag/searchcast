@@ -2,9 +2,11 @@ name: release
 
 # The one release path of the monorepo. It publishes every package of the
 # workspace, each with its own version: `searchcast` (packages/searchcast),
-# `@searchcast/browser` (packages/browser) and `@searchcast/recipe`
-# (packages/recipe). Keep this file's name: on npm, every one of those names is
-# bound to the trusted publisher repo wighawag/searchcast + workflow
+# `@searchcast/browser` (packages/browser), `@searchcast/recipe`
+# (packages/recipe) and the five platform packages
+# `@searchcast/libcurl-{linux-x64,linux-arm64,darwin-x64,darwin-arm64,win32-x64}`
+# (packages/libcurl-*). Keep this file's name: on npm, every one of those names
+# is bound to the trusted publisher repo wighawag/searchcast + workflow
 # release.yml, so renaming it breaks every publish.
 #
 # Changesets release flow:
@@ -19,7 +21,21 @@ name: release
 #   Before publishing, `release:ci` runs the release guards: no version or plan
 #   at >= 1.0.0 and no planned major (scripts/release-plan.mjs; 1.0 needs an
 #   explicit decision), and every tarball's shape, license and manifest
-#   (scripts/pack-check.mjs). A failing guard stops the run before npm.
+#   (scripts/pack-check.mjs --require-payloads: every platform package must
+#   hold its library). A failing guard stops the run before npm.
+#
+# The platform packages carry the pinned libcurl-impersonate library, which is
+# never committed: the step "Build the platform packages" below downloads the
+# five archives pinned in LIBCURL_IMPERSONATE (packages/searchcast/src/libcurl.ts),
+# verifies each sha256 against the pin before unpacking, and writes each
+# library into its package (scripts/libcurl-packages.mjs). It runs on every
+# release run, BEFORE the changesets step, whether that step then opens the
+# Version Packages PR or publishes: a run that publishes therefore always has
+# all five built from the pins (a failed download or checksum fails the job
+# before anything is published, so no half set goes out), and each platform
+# package's `prepack` refuses to pack a library that is missing or not built
+# from the current pin. This is the only place a release downloads the
+# library; installing searchcast never does (ADR 0002).
 #
 # Auth is npm Trusted Publishing (OIDC): NO NPM_TOKEN secret. npm trusts this
 # repo + workflow (release.yml) via the trusted publisher registered in each
@@ -27,7 +43,8 @@ name: release
 # Node >= 22, and a recent pnpm; publishes are stamped with provenance.
 # A trusted publisher can only be registered on an existing package, so each
 # name was reserved by hand first: `searchcast@0.0.0`, then the scoped
-# `@searchcast/browser@0.0.0` and `@searchcast/recipe@0.0.0`. With the
+# `@searchcast/browser@0.0.0`, `@searchcast/recipe@0.0.0` and the five
+# `@searchcast/libcurl-<platform>@0.0.0`. With the
 # publisher registered on each (repo wighawag/searchcast, workflow
 # release.yml), every release goes through this tokenless OIDC flow. There is
 # no local publish path: no package has a `release` script, and no npm token
@@ -72,6 +89,12 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      # Every platform package's library, from the pinned archives, verified
+      # (see the header). Needs searchcast built: the pins and the verifying
+      # download are its own code (fetchLibrary, as `searchcast install-libcurl`).
+      - name: Build the platform packages
+        run: pnpm build && node scripts/libcurl-packages.mjs build
 
       - name: Create Release PR or Publish
         uses: changesets/action@v1

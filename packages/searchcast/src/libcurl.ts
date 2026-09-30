@@ -1,10 +1,13 @@
 // Locating, loading and checking libcurl-impersonate. searchcast binds it
 // directly with koffi (ADR 0001 fallback; impers is NOT used, see
 // work/notes/findings/impers-fingerprint-vs-curl-cffi.md), so loading has no
-// download path at all: the library is only ever loaded from an explicit path
-// or the data directory (ADR 0002). The one thing that downloads it is the
-// user-invoked `searchcast install-libcurl` (src/install.ts). The library is
-// loaded once per process, so its path is process-global.
+// download path at all: the library is only ever loaded from an explicit path,
+// the data directory, or the platform package npm installed with searchcast
+// (`@searchcast/libcurl-<platform>`, an optional dependency built in the release
+// workflow from the pinned archive; ADR 0002, ADR 0005). The one thing in
+// searchcast that downloads it is the user-invoked `searchcast install-libcurl`
+// (src/install.ts). The library is loaded once per process, so its path is
+// process-global.
 //
 // Linux and FreeBSD load it with RTLD_DEEPBIND (koffi `deep`), so its calls to
 // nghttp2 and zlib bind to its own statically linked copies instead of Node's.
@@ -12,8 +15,9 @@
 // HTTP/2 HEADERS frame. Other platforms have no RTLD_DEEPBIND; the library is
 // loaded plainly there and HTTP/2 HEADERS parity is NOT claimed (unmeasured).
 
-import {existsSync, realpathSync} from 'node:fs';
-import {join, resolve} from 'node:path';
+import {existsSync, readFileSync, realpathSync, statSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {dirname, join, resolve} from 'node:path';
 import {IMPERSONATE_TARGET} from './chrome.js';
 import {dataDir, libraryFileName, oldDataDir} from './data-dir.js';
 import {SearchcastError} from './errors.js';
@@ -29,7 +33,9 @@ import {SearchcastError} from './errors.js';
  * for `searchcast install-libcurl`: every digest matches the API again, the
  * linux-x64 download hashes to it, and `library` is a regular file (not a
  * symlink) in the linux-x64, linux-arm64, darwin-x64, darwin-arm64 and
- * win32-x64 archives.
+ * win32-x64 archives. The platform packages (`@searchcast/libcurl-<platform>`,
+ * one per key below) are built from these same pins by
+ * `scripts/libcurl-packages.mjs` in the release workflow.
  */
 export const LIBCURL_IMPERSONATE = {
 	version: '2.1.1',
@@ -78,13 +84,70 @@ export type LibrarySource =
 	| 'LIBCURL_PATH'
 	| 'data directory'
 	/** serpcast's data directory, read when the new one has no library (ADR 0005). */
-	| 'old data directory';
+	| 'old data directory'
+	/** `@searchcast/libcurl-<platform>`, the optional dependency npm installed with searchcast. */
+	| 'platform package';
 
-/** `resolveLibraryPath`, also saying which setting named the path (for `doctor`). */
+/** The name of the platform package carrying the pinned library for `platform` (`${process.platform}-${process.arch}`). */
+export function platformPackageName(platform: string): string {
+	return `@searchcast/libcurl-${platform}`;
+}
+
+/** An installed platform package: its name and version (from its package.json). */
+export interface PlatformPackage {
+	name: string;
+	version: string;
+}
+
+/**
+ * The library of the platform package for `platform`, resolved from `from`
+ * (a file path or URL; default this module, i.e. where npm installed
+ * searchcast's optional dependencies) the way Node resolves a dependency.
+ * Undefined when the platform has no package (none is pinned for it), the
+ * package is not installed (npm skipped it: another platform, or optional
+ * dependencies turned off), or it has no library file. Only reads.
+ */
+export function platformPackageLibrary(
+	from: string | URL = import.meta.url,
+	platform = `${process.platform}-${process.arch}`,
+): {path: string; package: PlatformPackage} | undefined {
+	if (!Object.hasOwn(LIBCURL_IMPERSONATE.assets, platform)) return undefined;
+	const name = platformPackageName(platform);
+	let manifest: string;
+	try {
+		manifest = createRequire(from).resolve(`${name}/package.json`);
+	} catch {
+		return undefined; // not installed
+	}
+	const os = platform.slice(0, platform.indexOf('-')) as NodeJS.Platform;
+	const path = join(dirname(manifest), libraryFileName(os));
+	if (!existsSync(path) || !statSync(path).isFile()) return undefined;
+	let version = 'unknown';
+	try {
+		version = String(JSON.parse(readFileSync(manifest, 'utf8')).version);
+	} catch {
+		// the library is there; a broken manifest only loses the version
+	}
+	return {path, package: {name, version}};
+}
+
+/** Where the library was found (`locateLibrary`). */
+export interface LocatedLibrary {
+	path: string;
+	source: LibrarySource;
+	/** The platform package, when `source` is `platform package`. */
+	package?: PlatformPackage;
+}
+
+/**
+ * `resolveLibraryPath`, also saying which setting named the path (for
+ * `doctor`). `from` is where the platform package is resolved from (tests).
+ */
 export function locateLibrary(
 	option?: string,
 	env: NodeJS.ProcessEnv = process.env,
-): {path: string; source: LibrarySource} | undefined {
+	from?: string | URL,
+): LocatedLibrary | undefined {
 	const explicit: [string | undefined, LibrarySource][] = [
 		[option, 'option'],
 		[env.SEARCHCAST_LIBCURL_PATH, 'SEARCHCAST_LIBCURL_PATH'],
@@ -102,14 +165,17 @@ export function locateLibrary(
 		const path = join(dir, libraryFileName());
 		if (existsSync(path)) return {path, source};
 	}
+	const packaged = platformPackageLibrary(from);
+	if (packaged) return {...packaged, source: 'platform package'};
 	return undefined;
 }
 
 /**
  * Where the library is: the explicit option, then `SEARCHCAST_LIBCURL_PATH`,
  * then `SERPCAST_LIBCURL_PATH` (the old name), then `LIBCURL_PATH`, then the
- * data directory, then serpcast's old data directory. Undefined when none of
- * these names an existing file. Never searches system paths, never downloads.
+ * data directory, then serpcast's old data directory, then the platform
+ * package installed with searchcast. Undefined when none of these names an
+ * existing file. Never searches system paths, never downloads.
  */
 export function resolveLibraryPath(
 	option?: string,
@@ -118,8 +184,10 @@ export function resolveLibraryPath(
 	return locateLibrary(option, env)?.path;
 }
 
-const HOW_TO_FIX =
-	'Install it with `searchcast install-libcurl`, or set SEARCHCAST_LIBCURL_PATH (or the libcurlPath option) to a libcurl-impersonate shared library.';
+const thisPlatform = `${process.platform}-${process.arch}`;
+const HOW_TO_FIX = Object.hasOwn(LIBCURL_IMPERSONATE.assets, thisPlatform)
+	? `On ${thisPlatform}, npm installs it with searchcast as the optional dependency ${platformPackageName(thisPlatform)}; if optional dependencies were skipped, install it with \`searchcast install-libcurl\`, or set SEARCHCAST_LIBCURL_PATH (or the libcurlPath option) to a libcurl-impersonate shared library.`
+	: `There is no pinned libcurl-impersonate for ${thisPlatform} (no platform package, no \`searchcast install-libcurl\`): set SEARCHCAST_LIBCURL_PATH (or the libcurlPath option) to a libcurl-impersonate shared library.`;
 
 type Fn = (...args: any[]) => any;
 

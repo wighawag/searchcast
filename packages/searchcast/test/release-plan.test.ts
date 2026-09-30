@@ -209,6 +209,11 @@ describe('release-plan check', () => {
 					.sort(),
 			).toEqual([
 				['@searchcast/browser', '0.1.0'],
+				['@searchcast/libcurl-darwin-arm64', '0.1.0'],
+				['@searchcast/libcurl-darwin-x64', '0.1.0'],
+				['@searchcast/libcurl-linux-arm64', '0.1.0'],
+				['@searchcast/libcurl-linux-x64', '0.1.0'],
+				['@searchcast/libcurl-win32-x64', '0.1.0'],
 				['@searchcast/recipe', '0.1.0'],
 				['searchcast', '0.2.0'],
 			]);

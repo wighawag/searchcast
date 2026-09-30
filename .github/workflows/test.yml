@@ -13,6 +13,12 @@ name: test
 #                        (unprivileged user namespaces, allowed by a step
 #                        below) and a Python that imports SearXNG
 #                        (SEARCHCAST_TEST_SEARXNG_PYTHON).
+#   packages/libcurl-*   @searchcast/libcurl-<platform>: no code, no tests of
+#                        their own. The linux-x64 one is built here from the
+#                        pinned archive (scripts/libcurl-packages.mjs, as the
+#                        release builds every one), and searchcast's
+#                        platform-package tests load it with nothing
+#                        configured.
 # Locally those tests skip themselves with a message. Here every one must run:
 # `pnpm test:ci` ends with scripts/no-skips.mjs, which fails the job if any test
 # was skipped (it has no allowed exceptions today; an exception must be named
@@ -50,6 +56,19 @@ jobs:
 
       - name: Format and build
         run: pnpm format:check && pnpm build
+
+      # The platform package of this runner, @searchcast/libcurl-linux-x64,
+      # built exactly as release.yml builds all five: the archive pinned in
+      # LIBCURL_IMPERSONATE (packages/searchcast/src/libcurl.ts) is downloaded,
+      # its sha256 verified against the pin BEFORE it is unpacked, and its
+      # library written into packages/libcurl-linux-x64 (never committed). So
+      # the build and verification path runs on every PR, and
+      # packages/searchcast/test/platform-package-native.test.ts loads the
+      # library through the platform-package lookup (searchcast's optional
+      # dependency, linked by the workspace) with no env var and no data
+      # directory; the no-skip check makes sure it ran.
+      - name: Build the linux-x64 platform package
+        run: node scripts/libcurl-packages.mjs build linux-x64
 
       # The native transport tests need libcurl-impersonate: install the
       # release pinned in LIBCURL_IMPERSONATE (packages/searchcast/src/libcurl.ts)

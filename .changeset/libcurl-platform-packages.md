@@ -1,0 +1,9 @@
+---
+'@searchcast/libcurl-linux-x64': minor
+'@searchcast/libcurl-linux-arm64': minor
+'@searchcast/libcurl-darwin-x64': minor
+'@searchcast/libcurl-darwin-arm64': minor
+'@searchcast/libcurl-win32-x64': minor
+---
+
+First release. Each package holds only the pinned libcurl-impersonate 2.1.1 shared library for its platform (`libcurl-impersonate.so`, `.dylib` or `.dll`), taken unmodified from the upstream release archive pinned in `searchcast`'s source after verifying its sha256, with the license texts of the library's components. It is an optional dependency of `searchcast`, installed with it on its platform (`os`, `cpu`, and `libc: glibc` on Linux); it has no install script and nothing to import.

@@ -22,7 +22,7 @@ This repository is a pnpm workspace; every package is released from it.
 | [`searchcast`](packages/searchcast) | The library (transport, recipe runners, engine chain) and the `searchcast` CLI. This README. | AGPL-3.0-only |
 | [`@searchcast/browser`](packages/browser) | The browser runner: runs a recipe in a real Chromium or Chrome. An optional peer dependency of `searchcast`, needed only for library-mode browser engines, `searchcast serve` and `searchcast browser-query`. Formerly the `searchcast` package 0.1.x. | AGPL-3.0-only |
 | [`@searchcast/recipe`](packages/recipe) | The recipe schema, its TypeScript types and its validator, zero dependencies. Shared by `searchcast` and `@searchcast/browser` so one recipe file describes a site for both; MIT so projects under any license can share the format ([ADR 0003](docs/adr/0003-shared-recipe-schema-mit-package.md)). Formerly `serpcast-recipe`. | MIT |
-| `@searchcast/libcurl-<os>-<arch>` (to come) | The pinned libcurl-impersonate for one platform, installed with `searchcast` as an optional dependency, so no separate install step is needed. Until then, use `searchcast install-libcurl`. | per upstream |
+| [`@searchcast/libcurl-<os>-<arch>`](packages/libcurl-linux-x64) | The pinned libcurl-impersonate for one platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`), built in the release workflow from the pinned upstream archive after verifying its sha256. Optional dependencies of `searchcast`, so `npm install searchcast` brings the library on those platforms with no separate step and no download at run time; see [Installing libcurl-impersonate](#installing-libcurl-impersonate). | the library's components (MIT, curl, Apache-2.0, BSD-3-Clause, Zlib; on Linux also LGPL-3.0-or-later OR GPL-2.0-or-later, Unicode-DFS-2016), see each package's LICENSE |
 
 ## Upgrading from serpcast
 
@@ -78,7 +78,7 @@ session.close(); // closes the session's connections (cookies are kept)
 
 | option                | default                                                     | meaning                                                                                                                                                                                                 |
 | --------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libcurlPath`         | `SEARCHCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory (and the old names, see below) | The libcurl-impersonate shared library (see Finding the library, below).                                                                                                                                |
+| `libcurlPath`         | `SEARCHCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory (and the old names), the platform package, see below | The libcurl-impersonate shared library (see Finding the library, below).                                                                                                                                |
 | `proxy`               | none (direct)                                               | The proxy for all traffic (`http://`, `socks5://`, `socks5h://`, see Proxy and DNS, below).                                                                                                             |
 | `strict`              | `true`                                                      | Refuse to send unless libcurl-impersonate accepts the pinned target (see Strict mode, below). A security guarantee: `false` sends with a non-browser fingerprint.                                        |
 | `timeoutMs`           | 15000 (15 s)                                                | Per-request time limit.                                                                                                                                                                                 |
@@ -97,7 +97,7 @@ Every numeric option must be a positive finite number (a whole number for times 
 - **Connections.** A session keeps its connections open between its requests and reuses them, as Chrome does: one HTTP/2 connection per origin (concurrent requests to an origin wait for it rather than opening a second one), through the same proxy tunnel when there is a proxy. Connections are never shared between sessions: sessions (two engines, two callers) must stay unlinkable, and a shared connection would link them at the TLS and IP layer. `session.close()` closes them (at once when idle, else when the requests in flight settle); a later request opens a new one. An idle session keeps nothing running, so it never keeps the process alive. With `reuseConnections: false`, each request (a preflight included) opens its own connection and closes it when it settles.
 
 - **Proxy and DNS.** The proxy URL (`http://`, `socks5://`, `socks5h://`) is passed to libcurl as given, and its scheme decides where DNS is resolved: **`socks5h://` resolves host names at the proxy, `socks5://` resolves them locally**, on this host. Callers that want no local DNS must pass `socks5h://`. With no proxy, the connection is direct: libcurl's proxy environment variables (`http_proxy`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`) are ignored, so the caller's option is the only egress policy.
-- **Finding the library.** In order: the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH` (serpcast's name, read for one release), `LIBCURL_PATH`, then `libcurl-impersonate.so` (`.dylib`, `.dll`) in searchcast's data directory (`$XDG_DATA_HOME/searchcast/`, default `~/.local/share/searchcast/`), where [`searchcast install-libcurl`](#installing-libcurl-impersonate) puts it, then in serpcast's old data directory (`$XDG_DATA_HOME/serpcast/`, read for one release; see [Upgrading from serpcast](#upgrading-from-serpcast)). Nothing else is searched, and the library is never downloaded as a side effect: only that command, typed by you, downloads it. The pinned release and its checksums are `LIBCURL_IMPERSONATE` (libcurl-impersonate 2.1.1). The library is loaded once per process, so its path is process-global: a second instance asking for a different path fails with an `impersonation` error.
+- **Finding the library.** In order: the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH` (serpcast's name, read for one release), `LIBCURL_PATH`, then `libcurl-impersonate.so` (`.dylib`, `.dll`) in searchcast's data directory (`$XDG_DATA_HOME/searchcast/`, default `~/.local/share/searchcast/`), where [`searchcast install-libcurl`](#installing-libcurl-impersonate) puts it, then in serpcast's old data directory (`$XDG_DATA_HOME/serpcast/`, read for one release; see [Upgrading from serpcast](#upgrading-from-serpcast)), then in the platform package `@searchcast/libcurl-<platform>` npm installed with searchcast (resolved as Node resolves searchcast's own dependencies; skipped when it is not installed or the platform has none). Nothing else is searched, and the library is never downloaded as a side effect: only `searchcast install-libcurl`, typed by you, downloads it. The pinned release and its checksums are `LIBCURL_IMPERSONATE` (libcurl-impersonate 2.1.1). The library is loaded once per process, so its path is process-global: a second instance asking for a different path fails with an `impersonation` error.
 - **Strict mode** (default on): the first request (or `transport.check()`, which makes no network call) verifies the loaded library exports `curl_easy_impersonate` and accepts `chrome146`; otherwise it fails with an `impersonation` error saying how to fix it, before any network call. `strict: false` lets a plain libcurl send requests (with a non-browser TLS fingerprint).
 - **Errors.** Every failure is a `SearchcastError` with a `kind`: network failures are `transport`, the time limit (`timeoutMs`, default 15 s) is `timeout`, and a missing or wrong library is `impersonation`. Aborting with the `signal` rejects with the signal's reason. The transport follows no redirects and does not interpret status codes; that is the caller's job.
 - **Platforms.** On Linux (and FreeBSD) the library is loaded with `RTLD_DEEPBIND`, so it uses its own nghttp2 and the HTTP/2 HEADERS frame carries Chrome's PRIORITY flag (asserted in the tests). macOS and Windows have no `RTLD_DEEPBIND`: TLS impersonation works there, but HTTP/2 fingerprint parity with Chrome is not claimed (unmeasured). Response bodies are decoded with Node's zlib, including zstd (Node 22.15 or later).
@@ -339,7 +339,11 @@ A well-formed answer's results are normalized as for declarative recipes (`snipp
 
 ## Installing libcurl-impersonate
 
-searchcast needs the libcurl-impersonate shared library and never fetches it on its own ([ADR 0002](docs/adr/0002-policy-free-caller-injects-egress-state-recipes.md)). Two ways to provide it:
+searchcast needs the libcurl-impersonate shared library and never fetches it on its own ([ADR 0002](docs/adr/0002-policy-free-caller-injects-egress-state-recipes.md)). On a supported platform, installing searchcast is enough:
+
+**The platform package (default).** `npm install searchcast` (or pnpm, yarn) also installs `@searchcast/libcurl-<platform>` for your platform (Linux x64 and arm64 with glibc, macOS x64 and arm64, Windows x64): an optional dependency that holds only the pinned library, **libcurl-impersonate 2.1.1**, and its license notices, with no install script. searchcast finds it with no setting, after every other source (see Finding the library under [Transport](#transport-libcurl-impersonate)), and strict mode checks it at load like any other. Each `searchcast` release depends on the exact platform package version it was released with. The packages are built only in this repo's release workflow, from the archives pinned in searchcast's source (`LIBCURL_IMPERSONATE`), each verified against its sha256 before it is unpacked, and published with npm provenance; nothing is downloaded when you install or run searchcast. Run `searchcast doctor` to check: its `from:` line names the package and its version.
+
+Where there is no platform package (another platform, musl, FreeBSD) or npm skipped it (`--omit=optional`, `--no-optional`, an install copied from another platform), two other ways:
 
 **`searchcast install-libcurl`** downloads the pinned release, **libcurl-impersonate 2.1.1** ([lexiforest/curl-impersonate](https://github.com/lexiforest/curl-impersonate/releases/tag/v2.1.1)), for this platform, verifies its sha256 against the checksum pinned in searchcast's source (`LIBCURL_IMPERSONATE`), and installs the library as `libcurl-impersonate.so` (`.dylib`, `.dll`) in the data directory, where searchcast finds it with no further configuration:
 
@@ -347,7 +351,7 @@ searchcast needs the libcurl-impersonate shared library and never fetches it on 
 searchcast install-libcurl [--proxy socks5h://127.0.0.1:9050] [--force]
 ```
 
-- Pinned platforms: Linux x64 and arm64 (glibc), macOS x64 and arm64, Windows x64. Anywhere else (musl, FreeBSD), use your own build (below).
+- Pinned platforms: Linux x64 and arm64 (glibc), macOS x64 and arm64, Windows x64, the same as the platform packages. Anywhere else (musl, FreeBSD), use your own build (below).
 - It prints what it downloads from, the verified checksum and where it put the library on stderr, and the installed path alone on stdout.
 - `--proxy` sends the download through your egress (`http://`, `socks5://`, `socks5h://`, as for the transport; `socks5h://` resolves host names at the proxy). Without it the connection is direct; proxy environment variables are ignored.
 - A checksum mismatch, a failed download or an archive without the library aborts with exit 1 and installs nothing (the data directory is not even created). The library is written to a temporary file and renamed into place, so an interrupted install never leaves a partial library.
@@ -570,11 +574,11 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/code.ts` | 407 | 320 |
 | `src/download.ts` | 290 | 300 |
 | `src/transport.ts` | 681 | 300 |
-| `src/libcurl.ts` | 310 | 280 |
+| `src/libcurl.ts` | 378 | 280 |
 | `src/chain.ts` | 454 | 260 |
 | `src/browser.ts` | 237 | 250 |
 | `src/declarative.ts` | 198 | 220 |
-| `src/install.ts` | 178 | 180 |
+| `src/install.ts` | 239 | 180 |
 | `src/install-recipes.ts` | 263 | 250 |
 | `src/recipe-archive.ts` | 124 | 130 |
 | `src/recipes.ts` | 152 | 160 |
@@ -582,12 +586,12 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/cookies.ts` | 245 | 170 |
 | `src/post.ts` | 148 | 160 |
 | `src/searchcast-endpoint.ts` | 182 | 170 |
-| `src/doctor.ts` | 173 | 180 |
+| `src/doctor.ts` | 194 | 180 |
 | `src/cli.ts` | 192 | 200 |
 | `src/browser-cli.ts` | 64 | 70 |
 | `src/html.ts` | 126 | 150 |
 | `src/chrome.ts` | 361 | 150 |
-| `src/index.ts` | 158 | 160 |
+| `src/index.ts` | 160 | 160 |
 | `src/response.ts` | 98 | 120 |
 | `src/store.ts` | 63 | 80 |
 | `src/errors.ts` | 45 | 50 |
@@ -597,7 +601,7 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/data-dir.ts` | 95 | 100 |
 | `src/deprecated.ts` | 24 | 40 |
 
-**Total own source: 5547 LOC** (`packages/searchcast/src`) (excluding deps).
+**Total own source: 5753 LOC** (`packages/searchcast/src`) (excluding deps).
 
 ## Develop
 
@@ -608,9 +612,9 @@ pnpm build
 pnpm test
 ```
 
-`pnpm format:check && pnpm build && pnpm test` is the verify gate (`dorfl.json`). Tests run against the built packages, so build before testing. Besides every package's tests, `pnpm test` runs the two release guards: `pnpm check:release` (`scripts/release-plan.mjs`: prints the release plan of the pending changesets and fails if a package is at or planned at 1.0.0 or more, or planned for a major bump) and `pnpm check:pack` (`scripts/pack-check.mjs`: packs every publishable package with `pnpm pack --dry-run` and fails on a missing README, LICENSE or CHANGELOG, a stray file, the wrong license, or a manifest that would not publish publicly from this repo). CI (`.github/workflows/test.yml`, on every push and pull request) runs `pnpm test:ci`: the same, plus `scripts/no-skips.mjs`, which fails if any test was skipped.
+`pnpm format:check && pnpm build && pnpm test` is the verify gate (`dorfl.json`). Tests run against the built packages, so build before testing. Besides every package's tests, `pnpm test` runs the two release guards: `pnpm check:release` (`scripts/release-plan.mjs`: prints the release plan of the pending changesets and fails if a package is at or planned at 1.0.0 or more, or planned for a major bump) and `pnpm check:pack` (`scripts/pack-check.mjs`: packs every publishable package with `pnpm pack --dry-run` and fails on a missing README, LICENSE or CHANGELOG, a stray file, the wrong license, an install script, or a manifest that would not publish publicly from this repo; a platform package may lack its library there, but not at release, where it runs with `--require-payloads`). CI (`.github/workflows/test.yml`, on every push and pull request) runs `pnpm test:ci`: the same, plus `scripts/no-skips.mjs`, which fails if any test was skipped.
 
-The transport tests that need the native library run only when `SEARCHCAST_LIBCURL_PATH` points at a libcurl-impersonate shared library (and the plain-libcurl strict-mode tests only when `SEARCHCAST_TEST_PLAIN_LIBCURL` points at a plain libcurl); otherwise they are skipped with a message. CI installs the pinned release with `searchcast install-libcurl` itself (into a temporary data directory, checksum verified) and sets both, so they always run there.
+The transport tests that need the native library run only when `SEARCHCAST_LIBCURL_PATH` points at a libcurl-impersonate shared library (and the plain-libcurl strict-mode tests only when `SEARCHCAST_TEST_PLAIN_LIBCURL` points at a plain libcurl); otherwise they are skipped with a message. CI installs the pinned release with `searchcast install-libcurl` itself (into a temporary data directory, checksum verified) and sets both, so they always run there. The platform-package tests (`packages/searchcast/test/platform-package-native.test.ts`) run only when this platform's `packages/libcurl-<platform>` holds its library: `node scripts/libcurl-packages.mjs build <platform>` downloads the pinned archive, verifies it and writes it there (gitignored; `pnpm build` first). CI builds `linux-x64` this way, so they run there too.
 
 The browser tests (`packages/browser`) and the end-to-end tests of `searchcast serve` and `searchcast browser-query` (`packages/searchcast/test/serve.test.ts`, which run the real bin) need a Chromium or Chrome (`SEARCHCAST_CHROME`, or `chromium`/`chrome` on `PATH`) and are skipped without one; CI runs them with Google Chrome. Some of the serve cases also need `Xvfb` (or `SEARCHCAST_TEST_XVFB`), `systemd-socket-activate`, `unshare`, or a Python that can import SearXNG (`SEARCHCAST_TEST_SEARXNG_PYTHON`), and are skipped without them. CI provides all of them (Xvfb from apt, SearXNG at a pinned commit in a virtualenv), so no test is skipped there.
 
@@ -619,6 +623,8 @@ The browser tests (`packages/browser`) and the end-to-end tests of `searchcast s
 Every package is released with [changesets](https://github.com/changesets/changesets), each with its own version. A PR that should ship adds a changeset (`pnpm changeset`, pick the packages and the bump). On main, the `release` workflow (`.github/workflows/release.yml`) opens or updates a "Version Packages" PR from the pending changesets; merging it publishes the bumped packages to npm through npm Trusted Publishing (OIDC, no token), with provenance required. Every package is bound on npm to this repo and that workflow file, so it is the only way to publish: there is no local publish path.
 
 Everything stays below 1.0 until an explicit decision says otherwise: `release:ci` runs `pnpm check:release` and `pnpm check:pack` before `changeset publish`, so a version or a plan at 1.0.0 or more, a planned major, or a bad tarball stops the release before npm sees it (and fails CI on the PR that introduces it). A minor of `@searchcast/browser` leaves `searchcast`'s peer range (`>=0.1.0 <0.2.0`) and so plans a major for `searchcast`: release it together with a `searchcast` changeset that widens the range (`.changeset/config.json` sets `onlyUpdatePeerDependentsWhenOutOfRange`, so a peer still in range bumps nothing). The published `searchcast` package carries this README and the AGPL `LICENSE`, copied in at pack time by `scripts/copy-publish-assets.mjs`; `@searchcast/browser` and `@searchcast/recipe` ship their own README and `LICENSE` (MIT for the recipe schema).
+
+The platform packages `@searchcast/libcurl-<platform>` hold no committed library: every release run first builds all five with `node scripts/libcurl-packages.mjs build` (the archives pinned in `LIBCURL_IMPERSONATE`, each verified against its sha256 before unpacking, with the same code as `searchcast install-libcurl`), before the changesets step opens the Version Packages PR or publishes. `release:ci` then requires every library to be there (`pack-check.mjs --require-payloads`), and each platform package's `prepack` refuses to pack a library that is missing or was not built from the current pin. Each `searchcast` release depends on the exact versions of the platform packages (`workspace:*`), so bump them (a changeset) whenever the pin changes.
 
 ## License
 

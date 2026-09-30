@@ -64,6 +64,10 @@ _Avoid_: request site, origin type
 The default check that refuses to send any request unless libcurl-impersonate is loaded and accepts the impersonation target.
 _Avoid_: safe mode
 
+**Platform package**:
+`@searchcast/libcurl-<platform>` (`<platform>` is `${process.platform}-${process.arch}`, one per pinned archive): the npm package holding only the pinned libcurl-impersonate library for one platform, an optional dependency of `searchcast` pinned to an exact version. Built only in the release workflow from the pinned archive after verifying its sha256; installing it runs nothing. The last place searchcast looks for the library (after the option, the environment variables and the data directories); `searchcast install-libcurl` is the fallback where it is not installed.
+_Avoid_: native addon, prebuilt binary, binary package
+
 ### State
 
 **State store**:
