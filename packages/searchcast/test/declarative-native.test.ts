@@ -1,5 +1,5 @@
-// The declarative runner and `serpcast query` through the real transport
-// (libcurl-impersonate). Skipped without SERPCAST_LIBCURL_PATH, like the other
+// The declarative runner and `searchcast query` through the real transport
+// (libcurl-impersonate). Skipped without SEARCHCAST_LIBCURL_PATH, like the other
 // native tests (see test/native-notice.ts).
 
 import {execFile} from 'node:child_process';
@@ -12,12 +12,12 @@ import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {
 	createTransport,
 	runDeclarativeRecipe,
-	SerpcastError,
+	SearchcastError,
 } from '../src/index.js';
 import {item, recipe, resultsPage, startPageServer} from './pages.js';
 import type {PageServer} from './pages.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 
 describe.skipIf(!LIB)('declarative runner (native libcurl-impersonate)', () => {
@@ -32,7 +32,7 @@ describe.skipIf(!LIB)('declarative runner (native libcurl-impersonate)', () => {
 			'/s403': {status: 403, body: ''},
 			'/slow': {hang: true},
 		});
-		dir = mkdtempSync(join(tmpdir(), 'serpcast-native-'));
+		dir = mkdtempSync(join(tmpdir(), 'searchcast-native-'));
 	});
 	afterAll(async () => {
 		await server.close();
@@ -70,8 +70,8 @@ describe.skipIf(!LIB)('declarative runner (native libcurl-impersonate)', () => {
 			'q',
 			{session: transport.session()},
 		).catch((e: unknown) => e);
-		expect(error).toBeInstanceOf(SerpcastError);
-		expect((error as SerpcastError).kind).toBe('blocked');
+		expect(error).toBeInstanceOf(SearchcastError);
+		expect((error as SearchcastError).kind).toBe('blocked');
 	});
 
 	it('a slow page is a timeout', async () => {
@@ -83,10 +83,10 @@ describe.skipIf(!LIB)('declarative runner (native libcurl-impersonate)', () => {
 			'q',
 			{session: transport.session()},
 		).catch((e: unknown) => e);
-		expect((error as SerpcastError).kind).toBe('timeout');
+		expect((error as SearchcastError).kind).toBe('timeout');
 	});
 
-	it('serpcast query prints the results as JSON', async () => {
+	it('searchcast query prints the results as JSON', async () => {
 		const file = join(dir, 'r.json');
 		writeFileSync(file, JSON.stringify(recipe(server.origin)));
 		const {stdout} = await promisify(execFile)(process.execPath, [

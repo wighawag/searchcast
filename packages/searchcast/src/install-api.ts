@@ -1,8 +1,8 @@
-// `serpcast/install`: the installers and reports for embedders (webveil), so
-// a user installs one thing and the embedder offers serpcast's install steps
-// itself. A SEPARATE entry from `serpcast` on purpose: the main entry reaches
+// `searchcast/install`: the installers and reports for embedders (webveil), so
+// a user installs one thing and the embedder offers searchcast's install steps
+// itself. A SEPARATE entry from `searchcast` on purpose: the main entry reaches
 // no download code (test/install.test.ts walks its imports), so importing
-// `serpcast` can never download anything; only importing this subpath and
+// `searchcast` can never download anything; only importing this subpath and
 // calling an installer does, the embedder's explicit act (ADR 0002). The
 // guarantees are the CLI's: pinned checksums, archive validation, the
 // caller's proxy only. Size caps may be lowered, never raised.
@@ -24,8 +24,10 @@ export {
 } from './install-recipes.js';
 export {MAX_UNPACKED_BYTES as MAX_RECIPES_UNPACKED_BYTES} from './recipe-archive.js';
 export {
+	formatInstalledRecipeSets,
 	formatRecipeSets,
 	listRecipeSets,
+	recipeSetDir,
 	recipesDir,
 	type RecipeSet,
 	type RecipeSetSource,
@@ -38,4 +40,10 @@ export {
 	type DoctorOptions,
 	type DoctorReport,
 } from './doctor.js';
-export {LIBCURL_IMPERSONATE, dataDir, type LibrarySource} from './libcurl.js';
+export {LIBCURL_IMPERSONATE, type LibrarySource} from './libcurl.js';
+export {
+	dataDir,
+	oldDataDir,
+	oldDataDirHits,
+	type OldDataDirHits,
+} from './data-dir.js';

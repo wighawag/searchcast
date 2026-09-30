@@ -2,7 +2,7 @@
 // thread, so `process.exit()` returns while a request is in flight or right
 // after an abort (with `curl_easy_perform` on a worker thread both hung
 // forever). Also: concurrent requests in one process, and an idle in-flight
-// request does not busy-loop. Needs libcurl-impersonate (SERPCAST_LIBCURL_PATH)
+// request does not busy-loop. Needs libcurl-impersonate (SEARCHCAST_LIBCURL_PATH)
 // and the build (`dist/`, as the CLI tests); skipped without the library.
 
 import {spawn} from 'node:child_process';
@@ -11,7 +11,7 @@ import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {createTransport} from '../src/index.js';
 import {CA_PATH, startH2Server, type H2Server} from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const DIST = new URL('../dist/index.js', import.meta.url).href;
 
 /** A TCP server that accepts connections and never answers. */

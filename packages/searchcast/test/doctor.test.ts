@@ -1,10 +1,11 @@
-// `serpcast doctor`, and `serpcast query` after `serpcast install-libcurl`. The
+// `searchcast doctor`, and `searchcast query` after `searchcast install-libcurl`. The
 // first block needs no native library; the second runs only with
-// SERPCAST_LIBCURL_PATH (see test/native-notice.ts). Every data directory is a
+// SEARCHCAST_LIBCURL_PATH (see test/native-notice.ts). Every data directory is a
 // temp dir, and the real one is checked untouched.
 
 import {execFile} from 'node:child_process';
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -18,7 +19,7 @@ import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {doctor, formatReport, healthy} from '../src/doctor.js';
-import {libraryFileName} from '../src/index.js';
+import {libraryFileName, oldDataDirHits} from '../src/index.js';
 import {installLibcurl} from '../src/install.js';
 import {item, recipe, resultsPage, startPageServer} from './pages.js';
 import {
@@ -28,10 +29,11 @@ import {
 	sha256,
 	startReleaseServer,
 	tarGz,
+	tree,
 } from './release.js';
 import {CA_PATH, startConnectProxy, startH2Server} from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const run = promisify(execFile);
 
@@ -42,9 +44,10 @@ let tmp: string;
 let env: NodeJS.ProcessEnv;
 beforeEach(() => {
 	before = snapshot();
-	tmp = mkdtempSync(join(tmpdir(), 'serpcast-doctor-'));
+	tmp = mkdtempSync(join(tmpdir(), 'searchcast-doctor-'));
 	env = {
 		...process.env,
+		SEARCHCAST_LIBCURL_PATH: '',
 		SERPCAST_LIBCURL_PATH: '',
 		LIBCURL_PATH: '',
 		HOME: tmp,
@@ -75,7 +78,7 @@ const failed = (promise: Promise<unknown>) =>
 		(e: {code: number; stdout: string; stderr: string}) => e,
 	);
 
-describe('serpcast doctor (no native library needed)', () => {
+describe('searchcast doctor (no native library needed)', () => {
 	it('reports a missing library and how to fix it (exit 1), with no network request', async () => {
 		const proxy = await listener();
 		try {
@@ -91,7 +94,7 @@ describe('serpcast doctor (no native library needed)', () => {
 				expect(stdout).toMatch(/^library: +not found$/m);
 				expect(stdout).toMatch(/^pinned: +libcurl-impersonate 2\.1\.1$/m);
 				expect(stdout).toMatch(/^impersonation: +NOT active$/m);
-				expect(stdout).toMatch(/^problem: .*serpcast install-libcurl/m);
+				expect(stdout).toMatch(/^problem: .*searchcast install-libcurl/m);
 			}
 			expect(proxy.connections()).toBe(0);
 		} finally {
@@ -100,8 +103,8 @@ describe('serpcast doctor (no native library needed)', () => {
 	});
 
 	it('names a data-directory file that is not a library, and skips --remote', async () => {
-		mkdirSync(join(tmp, 'data', 'serpcast'), {recursive: true});
-		const path = join(tmp, 'data', 'serpcast', libraryFileName());
+		mkdirSync(join(tmp, 'data', 'searchcast'), {recursive: true});
+		const path = join(tmp, 'data', 'searchcast', libraryFileName());
 		writeFileSync(path, 'not a library');
 		const report = await doctor({env, remote: true});
 		expect(report).toMatchObject({
@@ -112,12 +115,99 @@ describe('serpcast doctor (no native library needed)', () => {
 		});
 		expect(healthy(report)).toBe(false);
 		expect(formatReport(report)).toMatch(
-			/^from: +the data directory \(serpcast install-libcurl\)$/m,
+			/^from: +the data directory \(searchcast install-libcurl\)$/m,
 		);
 	});
 });
 
-describe.skipIf(!LIB)('serpcast doctor (native libcurl-impersonate)', () => {
+describe('searchcast doctor and the old serpcast names (no native library needed)', () => {
+	it('names SERPCAST_LIBCURL_PATH as the old name and says which to use', async () => {
+		const path = join(tmp, 'lib.so');
+		writeFileSync(path, 'not a library');
+		const report = await doctor({env: {...env, SERPCAST_LIBCURL_PATH: path}});
+		expect(report.library).toMatchObject({
+			path,
+			source: 'SERPCAST_LIBCURL_PATH',
+		});
+		expect(formatReport(report)).toMatch(
+			/^from: +SERPCAST_LIBCURL_PATH \(serpcast's old name, read for one release: rename it SEARCHCAST_LIBCURL_PATH\)$/m,
+		);
+		const newer = await doctor({
+			env: {...env, SEARCHCAST_LIBCURL_PATH: path, SERPCAST_LIBCURL_PATH: '/x'},
+		});
+		expect(newer.library?.source).toBe('SEARCHCAST_LIBCURL_PATH');
+		expect(formatReport(newer)).toMatch(/^from: +SEARCHCAST_LIBCURL_PATH$/m);
+	});
+
+	it("reports a library read from serpcast's old data directory, with the exact mv command, and moves nothing", async () => {
+		const old = join(tmp, 'data', 'serpcast');
+		mkdirSync(join(old, 'recipes', 'my-set'), {recursive: true});
+		writeFileSync(join(old, libraryFileName()), 'not a library');
+		const newDir = join(tmp, 'data', 'searchcast');
+		const before = tree(join(tmp, 'data'));
+		const {code, stdout} = await failed(
+			run(process.execPath, [cli, 'doctor'], {env}),
+		);
+		expect(code).toBe(1); // not a library; the fallback itself is no failure
+		expect(stdout).toContain(`library:       ${join(old, libraryFileName())}`);
+		expect(stdout).toMatch(
+			/^from: +serpcast's old data directory \(read for one release/m,
+		);
+		expect(stdout).toContain(
+			`old data dir:  ${old}: ${libraryFileName()}, recipes/my-set (read because ${newDir} lacks them; nothing is moved for you)`,
+		);
+		// The new directory does not exist: one mv moves the whole directory.
+		expect(stdout).toContain(`move with:     mv '${old}' '${newDir}'`);
+		expect(tree(join(tmp, 'data'))).toEqual(before);
+	});
+
+	it('lists only what the new directory lacks, and moves each item when the new directory exists', async () => {
+		const old = join(tmp, 'data', 'serpcast');
+		const newDir = join(tmp, 'data', 'searchcast');
+		for (const set of ['a', 'b'])
+			mkdirSync(join(old, 'recipes', set), {recursive: true});
+		writeFileSync(join(old, libraryFileName()), 'old');
+		mkdirSync(join(newDir, 'recipes', 'a'), {recursive: true});
+		writeFileSync(join(newDir, libraryFileName()), 'new');
+		const hits = oldDataDirHits(env);
+		expect(hits).toEqual({
+			dir: old,
+			newDir,
+			items: ['recipes/b'],
+			command: `mkdir -p '${join(newDir, 'recipes')}' && mv '${join(old, 'recipes', 'b')}' '${join(newDir, 'recipes', 'b')}'`,
+		});
+		const report = await doctor({env});
+		expect(report.library).toMatchObject({source: 'data directory'});
+		expect(report.oldDataDir).toEqual(hits);
+		expect(formatReport(report)).toMatch(/^move with: +mkdir -p /m);
+		rmSync(join(newDir, libraryFileName()));
+		expect(oldDataDirHits(env)?.command).toBe(
+			`mkdir -p '${join(newDir, 'recipes')}' && mv '${join(old, libraryFileName())}' '${join(newDir, libraryFileName())}' && mv '${join(old, 'recipes', 'b')}' '${join(newDir, 'recipes', 'b')}'`,
+		);
+		// The command really moves them: run it and nothing is left to report.
+		await run('sh', ['-c', oldDataDirHits(env)!.command]);
+		expect(oldDataDirHits(env)).toBeUndefined();
+		expect(existsSync(join(newDir, 'recipes', 'b'))).toBe(true);
+	});
+
+	it('quotes paths for the shell', () => {
+		const data = join(tmp, "it's here");
+		mkdirSync(join(data, 'serpcast'), {recursive: true});
+		writeFileSync(join(data, 'serpcast', libraryFileName()), 'x');
+		expect(oldDataDirHits({XDG_DATA_HOME: data})?.command).toBe(
+			`mv '${join(tmp, "it'\\''s here", 'serpcast')}' '${join(tmp, "it'\\''s here", 'searchcast')}'`,
+		);
+	});
+
+	it('says nothing about the old directory when it is absent or has nothing the new one lacks', async () => {
+		expect(oldDataDirHits(env)).toBeUndefined();
+		const report = await doctor({env});
+		expect(report.oldDataDir).toBeUndefined();
+		expect(formatReport(report)).not.toMatch(/old data dir|move with/);
+	});
+});
+
+describe.skipIf(!LIB)('searchcast doctor (native libcurl-impersonate)', () => {
 	it('reports the library, where it came from and that impersonation is active, without any request', async () => {
 		const proxy = await startConnectProxy();
 		try {
@@ -186,7 +276,7 @@ describe.skipIf(!LIB)('serpcast doctor (native libcurl-impersonate)', () => {
 	});
 });
 
-describe.skipIf(!LIB)('serpcast query after install-libcurl (native)', () => {
+describe.skipIf(!LIB)('searchcast query after install-libcurl (native)', () => {
 	it('finds the installed library with no path configured', async () => {
 		const archive = tarGz([{name: LIBRARY, body: readFileSync(LIB!)}]);
 		const releases = await startReleaseServer({'/rel/lib.tar.gz': archive});
@@ -198,7 +288,7 @@ describe.skipIf(!LIB)('serpcast query after install-libcurl (native)', () => {
 				env,
 				release: release(`${releases.origin}/rel/`, sha256(archive)),
 			});
-			expect(path).toBe(join(tmp, 'data', 'serpcast', libraryFileName()));
+			expect(path).toBe(join(tmp, 'data', 'searchcast', libraryFileName()));
 			const file = join(tmp, 'r.json');
 			writeFileSync(file, JSON.stringify(recipe(pages.origin)));
 			const {stdout} = await run(

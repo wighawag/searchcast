@@ -1,7 +1,7 @@
 {
-	"name": "serpcast",
-	"version": "0.6.0",
-	"description": "Keyless search engines over HTTP with a real browser's fingerprint (libcurl-impersonate), driven by recipes shared with searchcast, with an engine chain that falls back to a real browser.",
+	"name": "searchcast",
+	"version": "0.1.2",
+	"description": "Keyless search engines over HTTP with a real browser's fingerprint (libcurl-impersonate), driven by recipes, with an engine chain that falls back to a real browser (@searchcast/browser).",
 	"license": "AGPL-3.0-only",
 	"keywords": [
 		"search",
@@ -14,21 +14,21 @@
 		"self-hosted"
 	],
 	"author": "wighawag",
-	"homepage": "https://github.com/wighawag/serpcast/tree/main/packages/serpcast#readme",
+	"homepage": "https://github.com/wighawag/searchcast/tree/main/packages/searchcast#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/wighawag/serpcast.git",
-		"directory": "packages/serpcast"
+		"url": "git+https://github.com/wighawag/searchcast.git",
+		"directory": "packages/searchcast"
 	},
 	"bugs": {
-		"url": "https://github.com/wighawag/serpcast/issues"
+		"url": "https://github.com/wighawag/searchcast/issues"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"type": "module",
 	"bin": {
-		"serpcast": "./dist/cli.js"
+		"searchcast": "./dist/cli.js"
 	},
 	"exports": {
 		".": {

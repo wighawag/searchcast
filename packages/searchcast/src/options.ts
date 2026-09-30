@@ -1,10 +1,10 @@
 // Checking the caller's tuning options, once, where they are given (at
-// construction for `createTransport` and `createSerpcast`, at the call for the
+// construction for `createTransport` and `createSearchcast`, at the call for the
 // installers). A numeric option must be a positive finite number (an integer
 // where it counts something); zero is accepted only where the option documents
 // it as "off". A bad value is a `RangeError` naming the option: it is a bug in
 // the caller's configuration, not a search failure, so it is not a
-// `SerpcastError` (whose kinds describe what happened to a search).
+// `SearchcastError` (whose kinds describe what happened to a search).
 // Decisions: work/notes/observations/2026-09-30-tunables-and-install-api-decisions.md.
 
 export interface NumberRule {
@@ -36,7 +36,7 @@ export function checkNumber(
 		: `a positive finite ${kind}`;
 	const ceiling = rule.max === undefined ? '' : ` at most ${rule.max}`;
 	throw new RangeError(
-		`serpcast: ${name} must be ${range}${ceiling}, got ${String(value)}`,
+		`searchcast: ${name} must be ${range}${ceiling}, got ${String(value)}`,
 	);
 }
 
@@ -47,7 +47,7 @@ export function checkBoolean(
 ): boolean | undefined {
 	if (value === undefined || typeof value === 'boolean') return value;
 	throw new RangeError(
-		`serpcast: ${name} must be a boolean, got ${String(value)}`,
+		`searchcast: ${name} must be a boolean, got ${String(value)}`,
 	);
 }
 
@@ -62,6 +62,6 @@ export function checkNames(
 	)
 		return value as readonly string[] | undefined;
 	throw new RangeError(
-		`serpcast: ${name} must be an array of engine names, got ${JSON.stringify(value)}`,
+		`searchcast: ${name} must be an array of engine names, got ${JSON.stringify(value)}`,
 	);
 }

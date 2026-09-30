@@ -11,16 +11,16 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {
-	createSerpcast,
+	createSearchcast,
 	createTransport,
 	DEFAULT_DECOY_RULE,
 	isDecoy,
 	runDeclarativeRecipe,
-	SerpcastError,
+	SearchcastError,
 	type ChainTransport,
 	type Engine,
 	type SearchResult,
-	type SerpcastOptions,
+	type SearchcastOptions,
 } from '../src/index.js';
 import {installLibcurl} from '../src/install.js';
 import {installRecipes} from '../src/install-recipes.js';
@@ -51,7 +51,7 @@ async function thrown(fn: () => unknown): Promise<unknown> {
 }
 
 describe('invalid options fail loud at construction (RangeError naming the option)', () => {
-	const bad: Array<[keyof SerpcastOptions, unknown[]]> = [
+	const bad: Array<[keyof SearchcastOptions, unknown[]]> = [
 		['timeoutMs', [0, -1, NaN, Infinity, 1.5, '10']],
 		['maxBodyBytes', [0, -1, NaN, 0.5]],
 		['idlePollMs', [0, -5, NaN, Infinity]],
@@ -63,21 +63,24 @@ describe('invalid options fail loud at construction (RangeError naming the optio
 		['sessionIdleMs', [0, -1, NaN]],
 		['maxRedirects', [-1, 1.5, NaN]],
 		['keepSessions', ['false']],
-		['decoyGuard', ['bing', [1], {exclude: 'bing'}, {include: [2]}, null]],
+		[
+			'decoyGuard',
+			['engine-a', [1], {exclude: 'engine-a'}, {include: [2]}, null],
+		],
 		[
 			'decoyRule',
 			[{top: 0}, {maxRelevant: -1}, {prefix: 2.5}, {top: NaN}, 'strict'],
 		],
 	];
 	for (const [option, values] of bad) {
-		it(`createSerpcast refuses a bad ${option}`, () => {
+		it(`createSearchcast refuses a bad ${option}`, () => {
 			for (const value of values) {
 				expect(
-					() => createSerpcast({[option]: value} as SerpcastOptions),
+					() => createSearchcast({[option]: value} as SearchcastOptions),
 					`${option}: ${String(value)}`,
-				).toThrow(new RegExp(`serpcast: ${option}`));
+				).toThrow(new RegExp(`searchcast: ${option}`));
 				expect(() =>
-					createSerpcast({[option]: value} as SerpcastOptions),
+					createSearchcast({[option]: value} as SearchcastOptions),
 				).toThrow(RangeError);
 			}
 		});
@@ -89,20 +92,20 @@ describe('invalid options fail loud at construction (RangeError naming the optio
 		);
 		expect(() => createTransport({maxPreflightAgeS: -1})).toThrow(RangeError);
 		const {transport} = fakeTransport({});
-		expect(() => createSerpcast({transport, idlePollMs: -1})).toThrow(
+		expect(() => createSearchcast({transport, idlePollMs: -1})).toThrow(
 			/idlePollMs/,
 		);
 	});
 
 	it('accepts zero where it means off: cooldownMs and maxRedirects', () => {
 		expect(() =>
-			createSerpcast({cooldownMs: 0, maxRedirects: 0}),
+			createSearchcast({cooldownMs: 0, maxRedirects: 0}),
 		).not.toThrow();
 	});
 
 	it('accepts every option at a valid value (defaults unchanged when unset)', () => {
 		expect(() =>
-			createSerpcast({
+			createSearchcast({
 				timeoutMs: 1000,
 				maxBodyBytes: 1024,
 				reuseConnections: false,
@@ -126,12 +129,12 @@ describe('decoyGuard: the object form and its off switch', () => {
 	const decoy = () => pages.results('RuneScape', 'Kernel', 'Install', 'Wiki');
 	const answers = {a: decoy, x: decoy, next: () => pages.results('Next')};
 	const next = engine('next');
-	const run = async (engines: Engine[], options: SerpcastOptions) => {
-		const serpcast = createSerpcast({
+	const run = async (engines: Engine[], options: SearchcastOptions) => {
+		const searchcast = createSearchcast({
 			transport: fakeTransport(answers).transport,
 			...options,
 		});
-		const response = await serpcast.search(query, {engines});
+		const response = await searchcast.search(query, {engines});
 		return {
 			engine: response.engine,
 			failures: response.failures.map((f) => [f.engine, f.error.kind]),
@@ -209,8 +212,8 @@ describe('decoyRule', () => {
 				),
 			next: () => pages.results('Next'),
 		};
-		const search = (options: SerpcastOptions) =>
-			createSerpcast({
+		const search = (options: SearchcastOptions) =>
+			createSearchcast({
 				transport: fakeTransport(answers).transport,
 				...options,
 			}).search(query, {engines: [engine('a'), engine('next')]});
@@ -248,24 +251,24 @@ describe('keepSessions', () => {
 
 	it('by default one session is kept between searches', async () => {
 		const {transport, sessions} = counting();
-		const serpcast = createSerpcast({transport});
+		const searchcast = createSearchcast({transport});
 		for (let i = 0; i < 3; i++)
-			await serpcast.search('q', {engines: [engine('a')]});
+			await searchcast.search('q', {engines: [engine('a')]});
 		expect(sessions.map((s) => s.closed)).toEqual([0]);
 	});
 
 	it('false: a new session per search, closed after it; cookies still go through the store', async () => {
 		const {transport, sessions, requests} = counting();
-		const serpcast = createSerpcast({transport, keepSessions: false});
+		const searchcast = createSearchcast({transport, keepSessions: false});
 		for (let i = 0; i < 3; i++)
-			await serpcast.search('q', {engines: [engine('a')]});
+			await searchcast.search('q', {engines: [engine('a')]});
 		expect(sessions.map((s) => s.closed)).toEqual([1, 1, 1]);
 		expect(requests.map((r) => r.cookie ?? '-')).toEqual([
 			'-',
 			'sid=a',
 			'sid=a',
 		]);
-		await serpcast.close();
+		await searchcast.close();
 		expect(sessions.map((s) => s.closed)).toEqual([1, 1, 1]);
 	});
 });
@@ -315,12 +318,12 @@ describe('maxRedirects (declarative runner and chain)', () => {
 			}),
 		};
 		const error = await thrown(() =>
-			createSerpcast({
+			createSearchcast({
 				transport: fakeTransport(redirecting).transport,
 				maxRedirects: 1,
 			}).search('q', {engines: [engine('a')]}),
 		);
-		expect((error as SerpcastError).failures![0]!.error.message).toMatch(
+		expect((error as SearchcastError).failures![0]!.error.message).toMatch(
 			/more than 1 redirects/,
 		);
 	});
@@ -346,15 +349,15 @@ describe('browser endpoint maxBodyBytes', () => {
 
 	const failure = async (maxBodyBytes: number) => {
 		const error = await thrown(() =>
-			createSerpcast({transport: fakeTransport({}).transport}).search('q', {
+			createSearchcast({transport: fakeTransport({}).transport}).search('q', {
 				engines: [{name: 'b', searchcast: {endpoint: base, maxBodyBytes}}],
 			}),
 		);
-		return (error as SerpcastError).failures![0]!.error;
+		return (error as SearchcastError).failures![0]!.error;
 	};
 
 	it('defaults to 16 MiB (a 4 KB answer passes)', async () => {
-		const answer = await createSerpcast({
+		const answer = await createSearchcast({
 			transport: fakeTransport({}).transport,
 		}).search('q', {
 			engines: [{name: 'b', searchcast: {endpoint: base}}],
@@ -378,7 +381,7 @@ describe('browser endpoint maxBodyBytes', () => {
 });
 
 describe('installer size caps may be lowered, never raised', () => {
-	const tmp = mkdtempSync(join(tmpdir(), 'serpcast-tunables-'));
+	const tmp = mkdtempSync(join(tmpdir(), 'searchcast-tunables-'));
 	afterAll(() => rmSync(tmp, {recursive: true, force: true}));
 	const archive = tarGz([
 		{name: 'web.json', body: Buffer.from('{"name":"web"}\n'.repeat(200))},

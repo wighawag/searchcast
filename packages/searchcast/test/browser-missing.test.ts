@@ -12,29 +12,29 @@ vi.mock('@searchcast/browser', () => {
 	});
 });
 
-const {createSerpcast, SerpcastError} = await import('../src/index.js');
+const {createSearchcast, SearchcastError} = await import('../src/index.js');
 const {engine, fakeTransport, pages} = await import('./engines.js');
 
 describe('without @searchcast/browser installed', () => {
 	it('library mode fails naming the package to install; HTTP engines still answer', async () => {
 		const {transport} = fakeTransport({a: () => pages.results('A')});
-		const serpcast = createSerpcast({transport});
+		const searchcast = createSearchcast({transport});
 		const browser = {
 			name: 'browser',
 			searchcast: {recipe: engine('browser')},
 		};
-		const error = await serpcast
+		const error = await searchcast
 			.search('q', {engines: [browser]})
 			.catch((e: unknown) => e);
-		expect(error).toBeInstanceOf(SerpcastError);
-		const [failure] = (error as InstanceType<typeof SerpcastError>).failures!;
+		expect(error).toBeInstanceOf(SearchcastError);
+		const [failure] = (error as InstanceType<typeof SearchcastError>).failures!;
 		expect(failure!.error.kind).toBe('transport');
 		expect(failure!.error.message).toContain('npm install @searchcast/browser');
 
-		const answer = await serpcast.search('q', {
+		const answer = await searchcast.search('q', {
 			engines: [engine('a'), browser],
 		});
 		expect(answer.engine).toBe('a');
-		await serpcast.close();
+		await searchcast.close();
 	});
 });

@@ -3,13 +3,13 @@
 // HTTP/2 HEADERS frame on every stream; two sessions never share one; `close()`
 // releases them; the engine chain keeps an engine's connection between searches
 // and releases it with the session; and an idle connection never keeps the
-// process alive. Needs libcurl-impersonate (SERPCAST_LIBCURL_PATH) and, for the
+// process alive. Needs libcurl-impersonate (SEARCHCAST_LIBCURL_PATH) and, for the
 // child-process tests, the build (`dist/`); skipped without the library.
 
 import {spawn} from 'node:child_process';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {
-	createSerpcast,
+	createSearchcast,
 	createTransport,
 	headerTable,
 	type CodeRecipe,
@@ -23,7 +23,7 @@ import {
 	type H2Server,
 } from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const DIST = new URL('../dist/index.js', import.meta.url).href;
 
 /** Wait (up to 2 s) until the server has exactly `n` connections open; then how many it has. */
@@ -197,41 +197,41 @@ describe.skipIf(!LIB)('engine chain connection reuse (native)', () => {
 	});
 
 	it("keeps an engine's connection between searches, one per engine, and closes them on clearSessions() and close()", async () => {
-		const serpcast = createSerpcast({libcurlPath: LIB, caPath: CA_PATH});
+		const searchcast = createSearchcast({libcurlPath: LIB, caPath: CA_PATH});
 		const [a, b] = [recipe('a'), recipe('b')];
 		expect(await openSettles(server, 0)).toBe(0);
 		const before = server.connections;
 		for (let i = 0; i < 3; i++) {
-			await serpcast.search('q', {engines: [a]});
-			await serpcast.search('q', {engines: [b]});
+			await searchcast.search('q', {engines: [a]});
+			await searchcast.search('q', {engines: [b]});
 		}
 		expect(server.connections).toBe(before + 2);
 		expect(server.open).toBe(2);
-		await serpcast.clearSessions('a');
+		await searchcast.clearSessions('a');
 		expect(await openSettles(server, 1)).toBe(1);
-		await serpcast.search('q', {engines: [a]});
+		await searchcast.search('q', {engines: [a]});
 		expect(server.connections).toBe(before + 3);
 		expect(server.open).toBe(2);
-		await serpcast.close();
+		await searchcast.close();
 		expect(await openSettles(server, 0)).toBe(0);
 	});
 
 	it('drops the connection with the session after sessionIdleMs', async () => {
 		let t = 0;
-		const serpcast = createSerpcast({
+		const searchcast = createSearchcast({
 			libcurlPath: LIB,
 			caPath: CA_PATH,
 			now: () => t,
 			sessionIdleMs: 1000,
 		});
 		const before = server.connections;
-		await serpcast.search('q', {engines: [recipe('idle')]});
-		await serpcast.search('q', {engines: [recipe('idle')]});
+		await searchcast.search('q', {engines: [recipe('idle')]});
+		await searchcast.search('q', {engines: [recipe('idle')]});
 		expect(server.connections).toBe(before + 1);
 		t += 1000;
-		await serpcast.search('q', {engines: [recipe('idle')]});
+		await searchcast.search('q', {engines: [recipe('idle')]});
 		expect(server.connections).toBe(before + 2);
-		await serpcast.close();
+		await searchcast.close();
 	});
 
 	/** Run `script` in a child Node; its exit code, or 'hung' if it is still running after `limitMs`. */
@@ -257,20 +257,20 @@ describe.skipIf(!LIB)('engine chain connection reuse (native)', () => {
 	}
 
 	const child = (after: string) => `
-		import {createSerpcast} from ${JSON.stringify(DIST)};
-		const serpcast = createSerpcast({libcurlPath: ${JSON.stringify(LIB)}, caPath: ${JSON.stringify(CA_PATH)}});
+		import {createSearchcast} from ${JSON.stringify(DIST)};
+		const searchcast = createSearchcast({libcurlPath: ${JSON.stringify(LIB)}, caPath: ${JSON.stringify(CA_PATH)}});
 		const engine = {name: 'child', async search(query, ctx) {
 			const r = await ctx.http.json('https://localhost:${server.port}/child?q=' + query, {kind: 'document'});
 			return r.hits.map((h) => ({title: h.t, url: h.u}));
 		}};
-		const first = await serpcast.search('q', {engines: [engine]});
-		const second = await serpcast.search('q', {engines: [engine]});
+		const first = await searchcast.search('q', {engines: [engine]});
+		const second = await searchcast.search('q', {engines: [engine]});
 		process.exitCode = first.results.length === 1 && second.results.length === 1 ? 0 : 2;
 		${after}
 	`;
 
-	it('Serpcast.close() leaves nothing that keeps the process alive', async () => {
-		expect(await runChild(child('await serpcast.close();'), 5000)).toBe(0);
+	it('Searchcast.close() leaves nothing that keeps the process alive', async () => {
+		expect(await runChild(child('await searchcast.close();'), 5000)).toBe(0);
 	}, 10_000);
 
 	it('an idle connection alone does not keep the process alive (no close())', async () => {

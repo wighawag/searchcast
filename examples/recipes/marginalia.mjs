@@ -1,4 +1,4 @@
-// An example serpcast code recipe for Marginalia Search (https://marginalia-search.com),
+// An example searchcast code recipe for Marginalia Search (https://marginalia-search.com),
 // an independent web search engine whose API is meant for programs:
 // https://about.marginalia-search.com/article/api/ (read 2026-09-29).
 //
@@ -10,11 +10,11 @@
 // It uses the URL-keyed API (`api.marginalia.nu/<key>/search/<query>`), which
 // Marginalia documents as deprecated but working "as long as the project
 // does". The current API (`api2.marginalia-search.com`) takes the key in an
-// `API-Key` header, and serpcast's transport sends only Chrome's header table.
-// The key is part of the URL, so it appears in serpcast's error messages
+// `API-Key` header, and searchcast's transport sends only Chrome's header table.
+// The key is part of the URL, so it appears in searchcast's error messages
 // (they name the URL): keep that in mind when you log failures.
 //
-// This is an example, not an engine bundled with serpcast: load it by path,
+// This is an example, not an engine bundled with searchcast: load it by path,
 // or copy it next to your own recipes and adapt it.
 
 const API = 'https://api.marginalia.nu';

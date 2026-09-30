@@ -1,25 +1,26 @@
-// serpcast's library entry: the engine chain (`createSerpcast`), the state
-// store, the transport layer, the declarative and code recipe runners and
-// browser engines (searchcast). Nothing here imports `searchcast` itself: it
-// is loaded only when a library-mode browser engine runs.
+// searchcast's library entry: the engine chain (`createSearchcast`), the
+// state store, the transport layer, the declarative and code recipe runners
+// and browser engines. Nothing here imports `@searchcast/browser` itself: it
+// is loaded only when a library-mode browser engine runs. The serpcast names
+// of the API stay exported, deprecated, for one release (deprecated.ts).
 
 export {
-	SerpcastError,
+	SearchcastError,
 	type EngineFailure,
-	type SerpcastErrorKind,
+	type SearchcastErrorKind,
 } from './errors.js';
 export {
 	DEFAULT_COOLDOWN_MS,
 	DEFAULT_SESSION_IDLE_MS,
-	createSerpcast,
+	createSearchcast,
 	type ChainTransport,
 	type DecoyGuard,
 	type Engine,
 	type SearchOptions,
 	type SearchResponse,
-	type Serpcast,
-	type SerpcastOptions,
-} from './serpcast.js';
+	type Searchcast,
+	type SearchcastOptions,
+} from './chain.js';
 export {DEFAULT_DECOY_RULE, isDecoy, type DecoyRule} from './decoy.js';
 export {
 	createMemoryStore,
@@ -73,13 +74,22 @@ export {
 	type StoredCookie,
 } from './cookies.js';
 import {LIBCURL_IMPERSONATE} from './libcurl.js';
+export {LIBCURL_IMPERSONATE, resolveLibraryPath} from './libcurl.js';
 export {
-	LIBCURL_IMPERSONATE,
 	dataDir,
 	libraryFileName,
-	resolveLibraryPath,
-} from './libcurl.js';
-export {recipesDir} from './recipes.js';
+	oldDataDir,
+	oldDataDirHits,
+	type OldDataDirHits,
+} from './data-dir.js';
+export {recipeSetDir, recipesDir} from './recipes.js';
+export {
+	SerpcastError,
+	createSerpcast,
+	type Serpcast,
+	type SerpcastErrorKind,
+	type SerpcastOptions,
+} from './deprecated.js';
 export {
 	MAX_REQUEST_BODY_BYTES,
 	createTransport,
@@ -93,20 +103,20 @@ export {
 } from './transport.js';
 
 /** The published name of this package. */
-export const packageName = 'serpcast';
+export const packageName = 'searchcast';
 
-/** The CLI usage text printed by the `serpcast` bin. */
+/** The CLI usage text printed by the `searchcast` bin. */
 export function usage(): string {
 	return [
-		'Usage: serpcast <command> [options]',
+		'Usage: searchcast <command> [options]',
 		'',
-		'serpcast runs keyless search engines described by recipes over HTTP with',
+		'searchcast runs keyless search engines described by recipes over HTTP with',
 		"a real browser's fingerprint.",
 		'',
 		'Commands:',
 		'  query --recipe <file> [--proxy <url>] [--libcurl <path>] <query...>',
 		'      Run one declarative recipe once. Prints {recipe, results} as JSON on',
-		'      stdout (exit 0), or "serpcast: <kind>: <message>" on stderr (exit 1).',
+		'      stdout (exit 0), or "searchcast: <kind>: <message>" on stderr (exit 1).',
 		'  install-libcurl [--proxy <url>] [--force]',
 		`      Download libcurl-impersonate ${LIBCURL_IMPERSONATE.version} for this platform, verify its`,
 		'      pinned sha256 and install it in the data directory. Prints the',
@@ -119,7 +129,8 @@ export function usage(): string {
 		'      code with full Node access, and the pin is your trust decision.',
 		"      Prints the set's directory on stdout; never runs unless you type it.",
 		'  recipes list [--dir <path>]',
-		'      List the installed recipe sets, their files and where they came from.',
+		'      List the installed recipe sets, their files and where they came from',
+		"      (also those still in serpcast's old data directory).",
 		'  doctor [--libcurl <path>] [--proxy <url>] [--remote]',
 		'      Report which library is loaded, from where, and whether',
 		'      impersonation is active (exit 0) or not (exit 1). No network',

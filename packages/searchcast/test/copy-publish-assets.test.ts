@@ -1,4 +1,4 @@
-// scripts/copy-publish-assets.mjs (the `serpcast` package's `prepack`): copies
+// scripts/copy-publish-assets.mjs (the `searchcast` package's `prepack`): copies
 // the root README.md and LICENSE into the package so its npm tarball carries
 // them, rewriting README links to files that do not ship into pinned GitHub
 // URLs. Every write goes to a throwaway repo under the OS temp dir.
@@ -32,7 +32,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 let fakeRepo: string;
 
 beforeEach(() => {
-	fakeRepo = mkdtempSync(join(tmpdir(), 'serpcast-copy-'));
+	fakeRepo = mkdtempSync(join(tmpdir(), 'searchcast-copy-'));
 	writeFileSync(
 		join(fakeRepo, 'README.md'),
 		'See [a note](work/notes/x.md), [ADR](docs/adr/0001.md) and [the license](LICENSE).',
@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe('copyPublishAssets', () => {
 	it('copies README.md and LICENSE into the package dir', () => {
-		const pkg = join(fakeRepo, 'packages', 'serpcast');
+		const pkg = join(fakeRepo, 'packages', 'searchcast');
 		mkdirSync(pkg, {recursive: true});
 
 		const written = copyPublishAssets({packageDir: pkg, root: fakeRepo});
@@ -68,11 +68,11 @@ describe('copyPublishAssets', () => {
 	});
 
 	it('pins links to `${name}@${version}`, the tag changesets pushes', () => {
-		const pkg = join(fakeRepo, 'packages', 'serpcast');
+		const pkg = join(fakeRepo, 'packages', 'searchcast');
 		mkdirSync(pkg, {recursive: true});
 		writeFileSync(
 			join(pkg, 'package.json'),
-			JSON.stringify({name: 'serpcast', version: '9.9.9'}),
+			JSON.stringify({name: 'searchcast', version: '9.9.9'}),
 			'utf8',
 		);
 
@@ -80,15 +80,15 @@ describe('copyPublishAssets', () => {
 
 		const readme = readFileSync(join(pkg, 'README.md'), 'utf8');
 		expect(readme).toContain(
-			`](https://github.com/${GITHUB_REPO}/blob/serpcast@9.9.9/work/notes/x.md)`,
+			`](https://github.com/${GITHUB_REPO}/blob/searchcast@9.9.9/work/notes/x.md)`,
 		);
 		expect(readme).toContain(
-			`](https://github.com/${GITHUB_REPO}/blob/serpcast@9.9.9/docs/adr/0001.md)`,
+			`](https://github.com/${GITHUB_REPO}/blob/searchcast@9.9.9/docs/adr/0001.md)`,
 		);
 	});
 
 	it('refuses to write outside the repo root', () => {
-		const outside = mkdtempSync(join(tmpdir(), 'serpcast-outside-'));
+		const outside = mkdtempSync(join(tmpdir(), 'searchcast-outside-'));
 		try {
 			expect(() =>
 				copyPublishAssets({packageDir: outside, root: fakeRepo}),
@@ -100,8 +100,8 @@ describe('copyPublishAssets', () => {
 	});
 
 	it('fails loud (without writing) when a source asset is missing', () => {
-		const emptyRepo = mkdtempSync(join(tmpdir(), 'serpcast-empty-'));
-		const pkg = join(emptyRepo, 'packages', 'serpcast');
+		const emptyRepo = mkdtempSync(join(tmpdir(), 'searchcast-empty-'));
+		const pkg = join(emptyRepo, 'packages', 'searchcast');
 		mkdirSync(pkg, {recursive: true});
 		try {
 			expect(() =>
@@ -129,8 +129,9 @@ describe('package wiring', () => {
 			readFileSync(resolve(here, '..', '..', name, 'package.json'), 'utf8'),
 		);
 
-	it('serpcast runs the script on prepack and is AGPL', () => {
+	it('searchcast runs the script on prepack and is AGPL', () => {
 		const pkg = manifest('searchcast');
+		expect(pkg.name).toBe('searchcast');
 		expect(pkg.scripts.prepack).toBe(
 			'node ../../scripts/copy-publish-assets.mjs',
 		);
@@ -145,7 +146,7 @@ describe('package wiring', () => {
 });
 
 describe('rewriteReadmeLinks', () => {
-	const ref = 'serpcast@1.2.3';
+	const ref = 'searchcast@1.2.3';
 	const base = `https://github.com/${GITHUB_REPO}/blob/${ref}`;
 
 	it('rewrites non-shipped repo-relative links to pinned GitHub URLs', () => {
@@ -155,12 +156,12 @@ describe('rewriteReadmeLinks', () => {
 		expect(rewriteReadmeLinks('[x](docs/adr/0001.md)', {ref})).toBe(
 			`[x](${base}/docs/adr/0001.md)`,
 		);
-		expect(rewriteReadmeLinks('[x](packages/serpcast-recipe)', {ref})).toBe(
-			`[x](${base}/packages/serpcast-recipe)`,
+		expect(rewriteReadmeLinks('[x](packages/recipe)', {ref})).toBe(
+			`[x](${base}/packages/recipe)`,
 		);
-		expect(
-			rewriteReadmeLinks('[x](packages/serpcast-recipe/LICENSE)', {ref}),
-		).toBe(`[x](${base}/packages/serpcast-recipe/LICENSE)`);
+		expect(rewriteReadmeLinks('[x](packages/recipe/LICENSE)', {ref})).toBe(
+			`[x](${base}/packages/recipe/LICENSE)`,
+		);
 		expect(
 			rewriteReadmeLinks('[x](examples/recipes/marginalia.mjs)', {ref}),
 		).toBe(`[x](${base}/examples/recipes/marginalia.mjs)`);
@@ -194,16 +195,25 @@ describe('rewriteReadmeLinks', () => {
 });
 
 describe('resolvePinRef', () => {
+	it('links the published README to the searchcast repo, pinned to the `searchcast@<version>` tag', () => {
+		expect(GITHUB_REPO).toBe('wighawag/searchcast');
+		const pkg = resolve(here, '..');
+		const {version} = JSON.parse(
+			readFileSync(join(pkg, 'package.json'), 'utf8'),
+		);
+		expect(resolvePinRef({packageDir: pkg})).toBe(`searchcast@${version}`);
+	});
+
 	it('prefers `${name}@${version}` from the package.json', () => {
-		const dir = mkdtempSync(join(tmpdir(), 'serpcast-pin-'));
+		const dir = mkdtempSync(join(tmpdir(), 'searchcast-pin-'));
 		try {
 			writeFileSync(
 				join(dir, 'package.json'),
-				JSON.stringify({name: 'serpcast', version: '0.2.1'}),
+				JSON.stringify({name: 'searchcast', version: '0.2.1'}),
 				'utf8',
 			);
 			expect(resolvePinRef({packageDir: dir, env: {GITHUB_SHA: 'abc'}})).toBe(
-				'serpcast@0.2.1',
+				'searchcast@0.2.1',
 			);
 		} finally {
 			rmSync(dir, {recursive: true, force: true});
@@ -211,7 +221,7 @@ describe('resolvePinRef', () => {
 	});
 
 	it('falls back to GITHUB_SHA when no package version is available', () => {
-		const dir = mkdtempSync(join(tmpdir(), 'serpcast-pin-'));
+		const dir = mkdtempSync(join(tmpdir(), 'searchcast-pin-'));
 		try {
 			expect(
 				resolvePinRef({packageDir: dir, env: {GITHUB_SHA: 'deadbeef'}}),

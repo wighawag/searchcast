@@ -1,10 +1,10 @@
 // A code recipe in the engine chain through the real transport
 // (libcurl-impersonate): its requests take the caller's proxy, carry the
 // header table of their kind and share the engine's cookies. Skipped without
-// SERPCAST_LIBCURL_PATH, like the other native tests (see test/native-notice.ts).
+// SEARCHCAST_LIBCURL_PATH, like the other native tests (see test/native-notice.ts).
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {createSerpcast, headerTable, type CodeRecipe} from '../src/index.js';
+import {createSearchcast, headerTable, type CodeRecipe} from '../src/index.js';
 import {
 	CA_PATH,
 	startConnectProxy,
@@ -13,7 +13,7 @@ import {
 	type RecordingProxy,
 } from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 
 describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 	let server: H2Server;
@@ -59,12 +59,12 @@ describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 				return data.hits.map((h) => ({title: h.t, url: h.u}));
 			},
 		};
-		const serpcast = createSerpcast({
+		const searchcast = createSearchcast({
 			libcurlPath: LIB,
 			caPath: CA_PATH,
 			proxy: `http://127.0.0.1:${proxy.port}`,
 		});
-		const response = await serpcast.search('x', {engines: [recipe]});
+		const response = await searchcast.search('x', {engines: [recipe]});
 		expect(response.results).toEqual([
 			{title: 'One', url: 'https://one.example/'},
 		]);
@@ -96,8 +96,8 @@ describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 				)) as {title: string; url: string}[];
 			},
 		};
-		const serpcast = createSerpcast({libcurlPath: LIB, caPath: CA_PATH});
-		const response = await serpcast.search('hello', {engines: [recipe]});
+		const searchcast = createSearchcast({libcurlPath: LIB, caPath: CA_PATH});
+		const response = await searchcast.search('hello', {engines: [recipe]});
 		expect(response.results).toEqual([
 			{title: 'hello', url: 'https://p.example/'},
 		]);
@@ -113,7 +113,7 @@ describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 				contentLength: post.body!.length,
 			}).flat(),
 		);
-		await serpcast.close();
+		await searchcast.close();
 	});
 	it('a cookie set with ctx.cookies (a name with #) reaches the server byte for byte, where Chrome puts it', async () => {
 		const origin = `https://localhost:${server.port}`;
@@ -126,8 +126,8 @@ describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 				return [];
 			},
 		};
-		const serpcast = createSerpcast({libcurlPath: LIB, caPath: CA_PATH});
-		await serpcast.search('set', {engines: [recipe]});
+		const searchcast = createSearchcast({libcurlPath: LIB, caPath: CA_PATH});
+		await searchcast.search('set', {engines: [recipe]});
 		const request = seen.find((s) => s.path === '/api?q=set')!;
 		const names = request.headers.filter(
 			(_, i) => i % 2 === 0 && !request.headers[i]!.startsWith(':'),
@@ -138,6 +138,6 @@ describe.skipIf(!LIB)('code recipes (native libcurl-impersonate)', () => {
 		expect(request.headers[request.headers.indexOf('cookie') + 1]).toBe(
 			'chal#1=a+b/c=',
 		);
-		await serpcast.close();
+		await searchcast.close();
 	});
 });

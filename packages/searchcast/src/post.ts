@@ -8,7 +8,7 @@
 // work/notes/observations/2026-09-29-post-requests-decisions.md.
 
 import {TEXT_BODY_CONTENT_TYPE, type FetchSite} from './chrome.js';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 import type {TransportResponse} from './response.js';
 import type {RequestOptions} from './transport.js';
 
@@ -55,13 +55,13 @@ export function postBody(
 	};
 	if (method === undefined || method === 'GET') return undefined;
 	if (method !== 'POST') {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`request method must be GET or POST, got ${JSON.stringify(method)}`,
 		);
 	}
 	if (kind !== 'fetch') {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`a POST must be a fetch request, not ${String(kind)}`,
 		);
@@ -71,13 +71,13 @@ export function postBody(
 	else if (typeof body === 'string') bytes = new TextEncoder().encode(body);
 	else if (body instanceof Uint8Array) bytes = body;
 	else {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			'a POST body must be a string or a Uint8Array',
 		);
 	}
 	if (bytes.length > maxBytes) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`a POST body is limited to ${maxBytes} bytes, got ${bytes.length}`,
 		);
@@ -86,7 +86,7 @@ export function postBody(
 		contentType !== undefined &&
 		(typeof contentType !== 'string' || !/^[\t\x20-\x7e]+$/.test(contentType))
 	) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`contentType must be a printable ASCII string, got ${JSON.stringify(contentType)}`,
 		);
@@ -118,10 +118,10 @@ export function checkPreflight(
 	if (!(status >= 200 && status <= 299) || status === 202) {
 		const where = `preflight: HTTP ${status} from ${url}`;
 		if (status === 202 || status === 403 || status === 429)
-			throw new SerpcastError('blocked', `blocked (${where})`);
+			throw new SearchcastError('blocked', `blocked (${where})`);
 		if (status === 404 || status === 410)
-			throw new SerpcastError('recipe', where);
-		throw new SerpcastError('transport', where);
+			throw new SearchcastError('recipe', where);
+		throw new SearchcastError('transport', where);
 	}
 	const allowed = (headers.get('access-control-allow-headers') ?? '')
 		.split(',')
@@ -135,7 +135,7 @@ export function checkPreflight(
 					? 'content-type is not in access-control-allow-headers'
 					: undefined;
 	if (refused) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'recipe',
 			`the CORS preflight to ${url} does not allow the POST from ${origin}: ${refused}`,
 		);

@@ -1,4 +1,4 @@
-// `serpcast install-recipes` and `serpcast recipes list`, against a local
+// `searchcast install-recipes` and `searchcast recipes list`, against a local
 // release server and local files (no network). Every test installs into a temp
 // XDG_DATA_HOME and checks the real data directory is untouched.
 
@@ -26,15 +26,20 @@ import {
 	expect,
 	it,
 } from 'vitest';
-import {recipesDir} from '../src/index.js';
+import {recipeSetDir, recipesDir} from '../src/index.js';
 import {InstallError} from '../src/install.js';
 import {installRecipes} from '../src/install-recipes.js';
-import {listRecipeSets} from '../src/recipes.js';
+import {
+	formatInstalledRecipeSets,
+	formatRecipeSets,
+	listRecipeSets,
+} from '../src/recipes.js';
 import {
 	realDataDirs,
 	sha256,
 	startReleaseServer,
 	tarGz,
+	tree,
 	type ReleaseServer,
 	type TarEntry,
 } from './release.js';
@@ -85,9 +90,9 @@ let env: NodeJS.ProcessEnv;
 let base: string;
 beforeEach(() => {
 	before = snapshot();
-	tmp = mkdtempSync(join(tmpdir(), 'serpcast-recipes-'));
+	tmp = mkdtempSync(join(tmpdir(), 'searchcast-recipes-'));
 	env = {XDG_DATA_HOME: join(tmp, 'data')};
-	base = join(tmp, 'data', 'serpcast', 'recipes');
+	base = join(tmp, 'data', 'searchcast', 'recipes');
 	server.hits.length = 0;
 });
 afterEach(() => {
@@ -106,7 +111,7 @@ const url = `/releases/download/v1/set.tar.gz`;
 describe('recipesDir', () => {
 	it('is recipes/ in the data directory', () => {
 		expect(recipesDir(env)).toBe(base);
-		expect(recipesDir({})).toMatch(/\.local\/share\/serpcast\/recipes$/);
+		expect(recipesDir({})).toMatch(/\.local\/share\/searchcast\/recipes$/);
 	});
 });
 
@@ -426,7 +431,7 @@ describe('installRecipes', () => {
 	});
 });
 
-describe('serpcast install-recipes and recipes list (bin)', () => {
+describe('searchcast install-recipes and recipes list (bin)', () => {
 	const cliEnv = () => ({
 		...process.env,
 		HOME: tmp,
@@ -441,7 +446,7 @@ describe('serpcast install-recipes and recipes list (bin)', () => {
 			{env: cliEnv()},
 		);
 		expect(stdout).toBe(join(base, 'my-set') + '\n');
-		expect(stderr).toContain(`serpcast:   api.mjs  sha256 ${sha256(CODE)}`);
+		expect(stderr).toContain(`searchcast:   api.mjs  sha256 ${sha256(CODE)}`);
 		const list = await run(process.execPath, [cli, 'recipes', 'list'], {
 			env: cliEnv(),
 		});
@@ -468,7 +473,7 @@ describe('serpcast install-recipes and recipes list (bin)', () => {
 		).catch((e: {code: number; stdout: string; stderr: string}) => e);
 		expect(error).toMatchObject({code: 1, stdout: ''});
 		expect((error as {stderr: string}).stderr).toMatch(
-			/^serpcast: checksum mismatch.*Nothing was installed/m,
+			/^searchcast: checksum mismatch.*Nothing was installed/m,
 		);
 		expect(existsSync(join(tmp, 'data'))).toBe(false);
 	});
@@ -533,6 +538,87 @@ describe('serpcast install-recipes and recipes list (bin)', () => {
 			/needs --sha256 <hex>.*trust decision/,
 		);
 		expect(existsSync(join(tmp, 'data'))).toBe(false);
+	});
+});
+
+describe("recipe sets in serpcast's old data directory", () => {
+	let oldBase: string;
+	/** A set directory with one file, under `root`. */
+	const put = (root: string, name: string, body = name) => {
+		mkdirSync(join(root, name), {recursive: true});
+		writeFileSync(join(root, name, 'web.json'), body);
+		return join(root, name);
+	};
+	beforeEach(() => {
+		oldBase = join(tmp, 'data', 'serpcast', 'recipes');
+	});
+
+	it('recipeSetDir: a set in the new directory wins, else the old one of that name is used', () => {
+		const oldOnly = put(oldBase, 'old-only');
+		const oldShared = put(oldBase, 'shared');
+		expect(recipeSetDir('old-only', env)).toBe(oldOnly);
+		expect(recipeSetDir('shared', env)).toBe(oldShared);
+		const newShared = put(base, 'shared');
+		expect(recipeSetDir('shared', env)).toBe(newShared);
+		expect(recipeSetDir('old-only', env)).toBe(oldOnly);
+		expect(recipeSetDir('missing', env)).toBeUndefined();
+		for (const bad of ['../serpcast/recipes/old-only', '.', '', 'a/b'])
+			expect(recipeSetDir(bad, env), bad).toBeUndefined();
+	});
+
+	it('installs into the new directory only, even when the old one has the set, and never touches the old one', async () => {
+		put(oldBase, 'my-set', 'the old set');
+		const oldTree = tree(join(tmp, 'data', 'serpcast'));
+		const result = await installRecipes(file(withManifest), {
+			sha256: sha256(withManifest),
+			env,
+		});
+		expect(result).toMatchObject({
+			dir: join(base, 'my-set'),
+			status: 'installed',
+		});
+		expect(tree(join(tmp, 'data', 'serpcast'))).toEqual(oldTree);
+		expect(recipeSetDir('my-set', env)).toBe(join(base, 'my-set'));
+	});
+
+	it('recipes list shows both directories, saying which old set is used and which is shadowed, and moves nothing', async () => {
+		put(oldBase, 'old-only');
+		put(oldBase, 'my-set', 'the old set');
+		await installRecipes(file(withManifest), {
+			sha256: sha256(withManifest),
+			env,
+		});
+		const before = tree(join(tmp, 'data'));
+		const {stdout} = await run(process.execPath, [cli, 'recipes', 'list'], {
+			env: {...process.env, HOME: tmp, XDG_DATA_HOME: env.XDG_DATA_HOME},
+		});
+		expect(stdout).toContain(`recipe sets in ${base}:`);
+		expect(stdout).toContain(
+			`recipe sets in ${oldBase} (serpcast's old data directory, read for one release when ${base} has no set of the name;`,
+		);
+		const [newer, older] = stdout.split(`recipe sets in ${oldBase}`);
+		expect(newer).toContain(`  dir:       ${join(base, 'my-set')}`);
+		expect(older).toContain(
+			`my-set\n  dir:       ${join(oldBase, 'my-set')}\n  not used:  ${join(base, 'my-set')} wins`,
+		);
+		expect(older).toContain(
+			`old-only\n  dir:       ${join(oldBase, 'old-only')}\n  used:      no set of this name in the new directory`,
+		);
+		expect(tree(join(tmp, 'data'))).toEqual(before);
+		// With --dir, only that directory.
+		const only = await run(
+			process.execPath,
+			[cli, 'recipes', 'list', '--dir', base],
+			{env: {...process.env, HOME: tmp, XDG_DATA_HOME: env.XDG_DATA_HOME}},
+		);
+		expect(only.stdout).not.toContain(oldBase);
+	});
+
+	it('formatInstalledRecipeSets is formatRecipeSets when the old directory has no set', () => {
+		put(base, 'a');
+		expect(formatInstalledRecipeSets(env)).toBe(
+			formatRecipeSets(base, listRecipeSets(base)),
+		);
 	});
 });
 

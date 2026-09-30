@@ -29,7 +29,7 @@ vi.mock('node:fs/promises', async (original) => {
 	return {...mod, default: mod};
 });
 
-const {createSerpcast} = await import('../src/index.js');
+const {createSearchcast} = await import('../src/index.js');
 const {engine, fakeTransport, pages} = await import('./engines.js');
 
 describe('the default state store', () => {
@@ -46,12 +46,12 @@ describe('the default state store', () => {
 				setCookie: ['s=1'],
 			}),
 		});
-		const serpcast = createSerpcast({transport});
+		const searchcast = createSearchcast({transport});
 		const chain = {engines: [engine('a'), engine('b')]};
-		await serpcast.search('q', chain);
-		await serpcast.search('q', chain);
-		await serpcast.clearSessions();
-		await serpcast.close();
+		await searchcast.search('q', chain);
+		await searchcast.search('q', chain);
+		await searchcast.clearSessions();
+		await searchcast.close();
 		expect(writes).toEqual([]);
 	});
 });

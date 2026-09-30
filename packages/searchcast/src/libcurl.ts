@@ -1,9 +1,9 @@
-// Locating, loading and checking libcurl-impersonate. serpcast binds it
+// Locating, loading and checking libcurl-impersonate. searchcast binds it
 // directly with koffi (ADR 0001 fallback; impers is NOT used, see
 // work/notes/findings/impers-fingerprint-vs-curl-cffi.md), so loading has no
 // download path at all: the library is only ever loaded from an explicit path
 // or the data directory (ADR 0002). The one thing that downloads it is the
-// user-invoked `serpcast install-libcurl` (src/install.ts). The library is
+// user-invoked `searchcast install-libcurl` (src/install.ts). The library is
 // loaded once per process, so its path is process-global.
 //
 // Linux and FreeBSD load it with RTLD_DEEPBIND (koffi `deep`), so its calls to
@@ -13,20 +13,20 @@
 // loaded plainly there and HTTP/2 HEADERS parity is NOT claimed (unmeasured).
 
 import {existsSync, realpathSync} from 'node:fs';
-import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {IMPERSONATE_TARGET} from './chrome.js';
-import {SerpcastError} from './errors.js';
+import {dataDir, libraryFileName, oldDataDir} from './data-dir.js';
+import {SearchcastError} from './errors.js';
 
 /**
  * The pinned libcurl-impersonate release and the sha256 of each platform's
  * release archive (lexiforest/curl-impersonate `libcurl-impersonate-*`
- * assets), keyed by `${process.platform}-${process.arch}`. `serpcast
+ * assets), keyed by `${process.platform}-${process.arch}`. `searchcast
  * install-libcurl` (src/install.ts; CI installs with it too) downloads from
  * here and verifies against these checksums; nothing else downloads. Checksums:
  * the `digest` field of the GitHub release API for tag v2.1.1, cross-checked
  * by downloading the linux-x64 archive (2026-09-28). Re-checked the same day
- * for `serpcast install-libcurl`: every digest matches the API again, the
+ * for `searchcast install-libcurl`: every digest matches the API again, the
  * linux-x64 download hashes to it, and `library` is a regular file (not a
  * symlink) in the linux-x64, linux-arm64, darwin-x64, darwin-arm64 and
  * win32-x64 archives.
@@ -69,26 +69,16 @@ export const LIBCURL_IMPERSONATE = {
 	},
 } as const;
 
-/** serpcast's data directory: `$XDG_DATA_HOME/serpcast`, default `~/.local/share/serpcast`. */
-export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
-	return join(
-		env.XDG_DATA_HOME || join(homedir(), '.local', 'share'),
-		'serpcast',
-	);
-}
-
-/** The library's file name inside the data directory, for this platform. */
-export function libraryFileName(
-	platform: NodeJS.Platform = process.platform,
-): string {
-	if (platform === 'darwin') return 'libcurl-impersonate.dylib';
-	if (platform === 'win32') return 'libcurl-impersonate.dll';
-	return 'libcurl-impersonate.so';
-}
-
 /** Where a library path came from, in the order they are tried. */
 export type LibrarySource =
-	'option' | 'SERPCAST_LIBCURL_PATH' | 'LIBCURL_PATH' | 'data directory';
+	| 'option'
+	| 'SEARCHCAST_LIBCURL_PATH'
+	/** serpcast's name, read for one release after the new one (ADR 0005). */
+	| 'SERPCAST_LIBCURL_PATH'
+	| 'LIBCURL_PATH'
+	| 'data directory'
+	/** serpcast's data directory, read when the new one has no library (ADR 0005). */
+	| 'old data directory';
 
 /** `resolveLibraryPath`, also saying which setting named the path (for `doctor`). */
 export function locateLibrary(
@@ -97,22 +87,29 @@ export function locateLibrary(
 ): {path: string; source: LibrarySource} | undefined {
 	const explicit: [string | undefined, LibrarySource][] = [
 		[option, 'option'],
+		[env.SEARCHCAST_LIBCURL_PATH, 'SEARCHCAST_LIBCURL_PATH'],
 		[env.SERPCAST_LIBCURL_PATH, 'SERPCAST_LIBCURL_PATH'],
 		[env.LIBCURL_PATH, 'LIBCURL_PATH'],
 	];
 	for (const [path, source] of explicit) {
 		if (path) return {path: resolve(path), source};
 	}
-	const installed = join(dataDir(env), libraryFileName());
-	return existsSync(installed)
-		? {path: installed, source: 'data directory'}
-		: undefined;
+	const installed: [string, LibrarySource][] = [
+		[dataDir(env), 'data directory'],
+		[oldDataDir(env), 'old data directory'],
+	];
+	for (const [dir, source] of installed) {
+		const path = join(dir, libraryFileName());
+		if (existsSync(path)) return {path, source};
+	}
+	return undefined;
 }
 
 /**
- * Where the library is: the explicit option, then `SERPCAST_LIBCURL_PATH`,
- * then `LIBCURL_PATH`, then the data directory. Undefined when none of these
- * names an existing file. Never searches system paths, never downloads.
+ * Where the library is: the explicit option, then `SEARCHCAST_LIBCURL_PATH`,
+ * then `SERPCAST_LIBCURL_PATH` (the old name), then `LIBCURL_PATH`, then the
+ * data directory, then serpcast's old data directory. Undefined when none of
+ * these names an existing file. Never searches system paths, never downloads.
  */
 export function resolveLibraryPath(
 	option?: string,
@@ -122,12 +119,12 @@ export function resolveLibraryPath(
 }
 
 const HOW_TO_FIX =
-	'Install it with `serpcast install-libcurl`, or set SERPCAST_LIBCURL_PATH (or the libcurlPath option) to a libcurl-impersonate shared library.';
+	'Install it with `searchcast install-libcurl`, or set SEARCHCAST_LIBCURL_PATH (or the libcurlPath option) to a libcurl-impersonate shared library.';
 
 type Fn = (...args: any[]) => any;
 
 /**
- * The loaded library and the functions serpcast calls. Every call is
+ * The loaded library and the functions searchcast calls. Every call is
  * synchronous, on the main thread: requests are driven through the multi
  * interface (see `Connections` in transport.ts), never with `curl_easy_perform` on a
  * worker thread, whose JS callbacks deadlocked `process.exit()`.
@@ -167,7 +164,7 @@ let loaded: {path: string; library: Promise<Libcurl>} | undefined;
 export function loadLibcurl(path: string | undefined): Promise<Libcurl> {
 	if (!path) {
 		return Promise.reject(
-			new SerpcastError(
+			new SearchcastError(
 				'impersonation',
 				`libcurl-impersonate not found. ${HOW_TO_FIX}`,
 			),
@@ -177,9 +174,9 @@ export function loadLibcurl(path: string | undefined): Promise<Libcurl> {
 	if (loaded) {
 		if (loaded.path === real) return loaded.library;
 		return Promise.reject(
-			new SerpcastError(
+			new SearchcastError(
 				'impersonation',
-				`libcurl is already loaded from ${loaded.path} in this process; cannot also load ${real}. The library path is process-global: use one path for every serpcast instance.`,
+				`libcurl is already loaded from ${loaded.path} in this process; cannot also load ${real}. The library path is process-global: use one path for every searchcast instance.`,
 			),
 		);
 	}
@@ -194,7 +191,7 @@ export function loadLibcurl(path: string | undefined): Promise<Libcurl> {
 
 async function bind(real: string): Promise<Libcurl> {
 	if (!existsSync(real)) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'impersonation',
 			`libcurl-impersonate not found at ${real}. ${HOW_TO_FIX}`,
 		);
@@ -206,7 +203,7 @@ async function bind(real: string): Promise<Libcurl> {
 		lib = koffi.load(real, deep ? {deep: true} : {});
 		pin(koffi, real);
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'impersonation',
 			`cannot load ${real} as libcurl. ${HOW_TO_FIX}`,
 			{cause},
@@ -255,7 +252,7 @@ async function bind(real: string): Promise<Libcurl> {
 			impersonate,
 		};
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'impersonation',
 			`${real} is not a libcurl library. ${HOW_TO_FIX}`,
 			{cause},
@@ -293,7 +290,7 @@ function pin(koffi: Libcurl['koffi'], path: string): void {
  */
 export function assertImpersonation(curl: Libcurl): void {
 	if (!curl.impersonate) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'impersonation',
 			`${curl.path} is plain libcurl (${curl.version}), not libcurl-impersonate. ${HOW_TO_FIX}`,
 		);
@@ -302,7 +299,7 @@ export function assertImpersonation(curl: Libcurl): void {
 	try {
 		const code: number = curl.impersonate(handle, IMPERSONATE_TARGET, 0);
 		if (code !== 0) {
-			throw new SerpcastError(
+			throw new SearchcastError(
 				'impersonation',
 				`${curl.path} (${curl.version}) does not support the impersonation target ${IMPERSONATE_TARGET}: ${curl.strerror(code)}. Use libcurl-impersonate ${LIBCURL_IMPERSONATE.version} or later.`,
 			);

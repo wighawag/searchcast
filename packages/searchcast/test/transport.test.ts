@@ -1,5 +1,5 @@
 // Tests through the real native library. They need libcurl-impersonate: set
-// SERPCAST_LIBCURL_PATH (CI fetches the pinned release, see
+// SEARCHCAST_LIBCURL_PATH (CI fetches the pinned release, see
 // .github/workflows/test.yml); without it they are skipped with a message.
 
 import * as zlib from 'node:zlib';
@@ -9,7 +9,7 @@ import {
 	headerTable,
 	IMPERSONATE_TARGET,
 	REQUEST_KINDS,
-	SerpcastError,
+	SearchcastError,
 } from '../src/index.js';
 import {
 	CA_PATH,
@@ -20,7 +20,7 @@ import {
 	type H2Server,
 } from './servers.js';
 
-const LIB = process.env.SERPCAST_LIBCURL_PATH;
+const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 
 const REFERER = 'https://localhost/page';
 
@@ -203,7 +203,7 @@ describe.skipIf(!LIB)('transport (native libcurl-impersonate)', () => {
 			.session()
 			.request(url('/slow/timeout'), {kind: 'document', timeoutMs: 300})
 			.catch((e: unknown) => e);
-		expect(error).toBeInstanceOf(SerpcastError);
+		expect(error).toBeInstanceOf(SearchcastError);
 		expect(error).toMatchObject({kind: 'timeout'});
 	});
 

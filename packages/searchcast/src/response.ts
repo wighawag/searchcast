@@ -6,7 +6,7 @@
 // the body limit (no decompression bomb).
 
 import * as zlib from 'node:zlib';
-import {SerpcastError} from './errors.js';
+import {SearchcastError} from './errors.js';
 
 export interface TransportResponse {
 	/** The URL requested (redirects are not followed; see `status` and `location`). */
@@ -27,7 +27,7 @@ export function respond(
 ): TransportResponse {
 	const status = Number(/^HTTP\/\S+ (\d{3})/.exec(lines[0] ?? '')?.[1]);
 	if (!status)
-		throw new SerpcastError('transport', `no HTTP status from ${url}`);
+		throw new SearchcastError('transport', `no HTTP status from ${url}`);
 	const headers = new Headers();
 	for (const line of lines.slice(1)) {
 		const colon = line.indexOf(':');
@@ -80,7 +80,7 @@ function decode(
 				throw new Error(`unsupported content-encoding ${coding}`);
 		}
 	} catch (cause) {
-		throw new SerpcastError(
+		throw new SearchcastError(
 			'transport',
 			`cannot decode the response from ${url}`,
 			{cause},

@@ -5,7 +5,7 @@
 import {fileURLToPath} from 'node:url';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
-	createSerpcast,
+	createSearchcast,
 	DEFAULT_COOLDOWN_MS,
 	loadCodeRecipe,
 	type CodeRecipe,
@@ -44,8 +44,11 @@ afterEach(() => {
 function setup(reply: (request: FakeRequest) => Answer) {
 	const time = clock();
 	const fake = fakeTransport({[HOST]: reply});
-	const serpcast = createSerpcast({now: time.now, transport: fake.transport});
-	return {...fake, time, serpcast};
+	const searchcast = createSearchcast({
+		now: time.now,
+		transport: fake.transport,
+	});
+	return {...fake, time, searchcast};
 }
 
 describe('example recipe: marginalia', () => {
@@ -54,7 +57,7 @@ describe('example recipe: marginalia', () => {
 	});
 
 	it('maps title, url and description (as snippet)', async () => {
-		const {serpcast, requests} = setup(() =>
+		const {searchcast, requests} = setup(() =>
 			answer([
 				{
 					url: 'https://a.example/',
@@ -67,7 +70,7 @@ describe('example recipe: marginalia', () => {
 				{title: 'no url'},
 			]),
 		);
-		const {results} = await serpcast.search('linear b', {
+		const {results} = await searchcast.search('linear b', {
 			engines: [marginalia],
 		});
 		expect(results).toEqual([
@@ -79,8 +82,8 @@ describe('example recipe: marginalia', () => {
 	});
 
 	it('uses the `public` key by default and URL-encodes the query into the path', async () => {
-		const {serpcast, requests} = setup(() => answer([]));
-		await serpcast.search('c++ & a/b?', {engines: [marginalia]});
+		const {searchcast, requests} = setup(() => answer([]));
+		await searchcast.search('c++ & a/b?', {engines: [marginalia]});
 		expect(requests[0]!.url).toBe(
 			`https://${HOST}/public/search/c%2B%2B%20%26%20a%2Fb%3F`,
 		);
@@ -88,8 +91,8 @@ describe('example recipe: marginalia', () => {
 
 	it('takes the key from MARGINALIA_API_KEY', async () => {
 		process.env.MARGINALIA_API_KEY = 'my-key';
-		const {serpcast, requests} = setup(() => answer([]));
-		await serpcast.search('q', {engines: [marginalia]});
+		const {searchcast, requests} = setup(() => answer([]));
+		await searchcast.search('q', {engines: [marginalia]});
 		expect(requests[0]!.url).toBe(`https://${HOST}/my-key/search/q`);
 	});
 
@@ -102,8 +105,8 @@ describe('example recipe: marginalia', () => {
 	])(
 		'sends count for maxResults %s (clamped to 1..100)',
 		async (max, count) => {
-			const {serpcast, requests} = setup(() => answer([]));
-			await serpcast.search('q', {
+			const {searchcast, requests} = setup(() => answer([]));
+			await searchcast.search('q', {
 				engines: [marginalia],
 				...(max !== undefined && {maxResults: max}),
 			});
@@ -114,14 +117,14 @@ describe('example recipe: marginalia', () => {
 	it.each([503, 429])(
 		'HTTP %s (the shared rate limit) is blocked and starts the cooldown',
 		async (status) => {
-			const {serpcast, time, hits} = setup(() => json({}, status));
-			const first = await serpcast.search('q', {engines: [marginalia]}).then(
+			const {searchcast, time, hits} = setup(() => json({}, status));
+			const first = await searchcast.search('q', {engines: [marginalia]}).then(
 				() => expect.fail('expected a failure'),
 				(e: {failures: {error: {kind: string}}[]}) => e,
 			);
 			expect(first.failures[0]!.error.kind).toBe('blocked');
 			time.advance(DEFAULT_COOLDOWN_MS - 1);
-			await serpcast.search('q', {engines: [marginalia]}).catch(() => {});
+			await searchcast.search('q', {engines: [marginalia]}).catch(() => {});
 			expect(hits(HOST)).toHaveLength(1);
 		},
 	);
@@ -131,8 +134,8 @@ describe('example recipe: marginalia', () => {
 		['results that is not an array', json({results: 'nope'})],
 		['a JSON null', json(null)],
 	])('a response with %s is a recipe error', async (_, reply) => {
-		const {serpcast} = setup(() => reply);
-		const error = await serpcast.search('q', {engines: [marginalia]}).then(
+		const {searchcast} = setup(() => reply);
+		const error = await searchcast.search('q', {engines: [marginalia]}).then(
 			() => expect.fail('expected a failure'),
 			(e: {failures: {error: {kind: string; message: string}}[]}) => e,
 		);
@@ -143,8 +146,8 @@ describe('example recipe: marginalia', () => {
 	});
 
 	it('another server error stays a transport error', async () => {
-		const {serpcast} = setup(() => json({}, 500));
-		const error = await serpcast.search('q', {engines: [marginalia]}).then(
+		const {searchcast} = setup(() => json({}, 500));
+		const error = await searchcast.search('q', {engines: [marginalia]}).then(
 			() => expect.fail('expected a failure'),
 			(e: {failures: {error: {kind: string}}[]}) => e,
 		);

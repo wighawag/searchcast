@@ -1,18 +1,18 @@
-// The decoy rule: is a result page about the query at all? Some engines, Bing
-// above all, answer some queries with a well-formed page of results unrelated
-// to the query (a "decoy": dictionary entries for "why", a gaming guide for a
-// Debian query). Decoys follow one pattern: each result is about ONE word of
-// the query, usually a generic one. So a result is relevant only when its
-// title + snippet + URL carries at least two distinct query terms (or the only
-// term), and a page is a decoy when at most one of its top 5 results is
-// relevant. Queries with fewer than 2 terms, or pages with fewer than 3
-// results, are never judged: too little to go on.
+// The decoy rule: is a result page about the query at all? Some engines (one
+// measured engine above all) answer some queries with a well-formed page of
+// results unrelated to the query (a "decoy": dictionary entries for "why", a
+// gaming guide for a Debian query). Decoys follow one pattern: each result is
+// about ONE word of the query, usually a generic one. So a result is relevant
+// only when its title + snippet + URL carries at least two distinct query terms
+// (or the only term), and a page is a decoy when at most one of its top 5
+// results is relevant. Queries with fewer than 2 terms, or pages with fewer
+// than 3 results, are never judged: too little to go on.
 //
 // A port of the guard measured in my-boxes (`packages/search-challenges/
 // relevance.py`: it flagged every decoy seen and none of ~55 genuine pages),
 // kept identical on purpose, stopword list and ASCII word pattern included,
 // so the rule deployed is the rule measured. The engine chain applies it to
-// the engines it guards (serpcast.ts); it is exported so code recipes and
+// the engines it guards (chain.ts); it is exported so code recipes and
 // callers can apply it themselves. The three thresholds (top, maxRelevant,
 // prefix) can be overridden with a `DecoyRule`, at the caller's risk: only
 // the defaults were measured. The stopword list, the 3-character minimum and
@@ -63,7 +63,7 @@ export function decoyTerms(query: string): string[] {
 /** `rule` completed with the defaults, each value checked (a positive integer, else a RangeError). */
 export function decoyRule(rule: Partial<DecoyRule> = {}): DecoyRule {
 	if (typeof rule !== 'object' || rule === null)
-		throw new RangeError(`serpcast: decoyRule must be an object`);
+		throw new RangeError(`searchcast: decoyRule must be an object`);
 	const value = (name: keyof DecoyRule) =>
 		checkNumber(`decoyRule.${name}`, rule[name], {integer: true}) ??
 		DEFAULT_DECOY_RULE[name];

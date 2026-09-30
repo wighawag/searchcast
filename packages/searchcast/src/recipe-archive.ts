@@ -1,5 +1,5 @@
 // The recipe release archive format, checked as a whole before
-// `serpcast install-recipes` (install-recipes.ts) writes anything: regular
+// `searchcast install-recipes` (install-recipes.ts) writes anything: regular
 // `*.mjs`, `*.js` and `*.json` files, all at the archive's root or all under
 // ONE top-level directory, with an optional `manifest.json` `{name, version}`.
 // Anything else (a link, a nested directory, another file type, a hidden

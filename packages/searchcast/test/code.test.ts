@@ -6,14 +6,14 @@ import {tmpdir} from 'node:os';
 import {join, relative} from 'node:path';
 import {afterAll, describe, expect, it} from 'vitest';
 import {
-	createSerpcast,
+	createSearchcast,
 	DEFAULT_COOLDOWN_MS,
 	isCodeRecipe,
 	loadCodeRecipe,
 	runCodeRecipe,
-	SerpcastError,
+	SearchcastError,
 	type CodeRecipe,
-	type SerpcastOptions,
+	type SearchcastOptions,
 } from '../src/index.js';
 import {
 	clock,
@@ -24,7 +24,7 @@ import {
 	type FakeRequest,
 } from './engines.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'serpcast-code-'));
+const dir = mkdtempSync(join(tmpdir(), 'searchcast-code-'));
 afterAll(() => rmSync(dir, {recursive: true, force: true}));
 let files = 0;
 /** Write a module whose body is `source` and return its path. */
@@ -48,16 +48,16 @@ const code = (
 
 function setup(
 	answers: Record<string, (request: FakeRequest) => Answer>,
-	options: SerpcastOptions & {proxy?: string} = {},
+	options: SearchcastOptions & {proxy?: string} = {},
 ) {
 	const time = clock();
 	const fake = fakeTransport(answers, {proxy: options.proxy});
-	const serpcast = createSerpcast({
+	const searchcast = createSearchcast({
 		now: time.now,
 		transport: fake.transport,
 		...options,
 	});
-	return {...fake, time, serpcast};
+	return {...fake, time, searchcast};
 }
 
 const failure = async (promise: Promise<unknown>) => {
@@ -65,15 +65,15 @@ const failure = async (promise: Promise<unknown>) => {
 		() => expect.fail('expected a failure'),
 		(e: unknown) => e,
 	);
-	expect(error).toBeInstanceOf(SerpcastError);
-	return error as SerpcastError;
+	expect(error).toBeInstanceOf(SearchcastError);
+	return error as SearchcastError;
 };
 /** The failure of the one engine of a chain that failed. */
 const onlyFailure = async (
-	serpcast: ReturnType<typeof setup>['serpcast'],
+	searchcast: ReturnType<typeof setup>['searchcast'],
 	e: CodeRecipe,
 ) => {
-	const error = await failure(serpcast.search('q', {engines: [e]}));
+	const error = await failure(searchcast.search('q', {engines: [e]}));
 	expect(error.kind).toBe('exhausted');
 	return error.failures![0]!.error;
 };
@@ -96,12 +96,12 @@ describe('loadCodeRecipe', () => {
 		expect(recipe.name).toBe('api');
 		expect(isCodeRecipe(recipe)).toBe(true);
 		expect(isCodeRecipe(engine('x'))).toBe(false);
-		const {serpcast, requests} = setup({
+		const {searchcast, requests} = setup({
 			a: pages.broken,
 			api: () =>
 				json({hits: [{t: 'One', u: 'https://one.example/', s: 'first'}]}),
 		});
-		const response = await serpcast.search('a b', {
+		const response = await searchcast.search('a b', {
 			engines: [engine('a'), recipe],
 		});
 		expect(response.engine).toBe('api');
@@ -129,8 +129,8 @@ describe('loadCodeRecipe', () => {
 				search() { return [{title: this.title, url: 'https://x.example/'}]; },
 			};
 		`);
-		const {serpcast} = setup({});
-		const {results} = await serpcast.search('q', {
+		const {searchcast} = setup({});
+		const {results} = await searchcast.search('q', {
 			engines: [await loadCodeRecipe(path)],
 		});
 		expect(results[0]!.title).toBe('from this');
@@ -170,7 +170,7 @@ describe('code recipes: ctx.http goes through the transport', () => {
 			});
 			return [{title: data.title, url: `https://r.example/${query}`}];
 		});
-		const {serpcast, requests} = setup(
+		const {searchcast, requests} = setup(
 			{
 				api: (request) =>
 					request.url.endsWith('/q')
@@ -179,8 +179,8 @@ describe('code recipes: ctx.http goes through the transport', () => {
 			},
 			{proxy: 'socks5h://127.0.0.1:9050'},
 		);
-		await serpcast.search('q1', {engines: [recipe]});
-		await serpcast.search('q2', {engines: [recipe]});
+		await searchcast.search('q1', {engines: [recipe]});
+		await searchcast.search('q2', {engines: [recipe]});
 		expect(requests).toEqual([
 			...['q1', 'q2'].flatMap((q) => [
 				{
@@ -250,8 +250,8 @@ describe('code recipes: ctx.http goes through the transport', () => {
 				await ctx.http.json('https://api.test/', {kind: 'document'});
 				return [];
 			});
-			const {serpcast} = setup({api: () => ({status, body: '{}'})});
-			const error = await onlyFailure(serpcast, recipe);
+			const {searchcast} = setup({api: () => ({status, body: '{}'})});
+			const error = await onlyFailure(searchcast, recipe);
 			expect(error.kind).toBe(kind);
 			expect(error.message).toMatch(`HTTP ${status}`);
 		},
@@ -269,14 +269,14 @@ describe('code recipes: ctx.http goes through the transport', () => {
 				},
 			];
 		});
-		const {serpcast} = setup({
+		const {searchcast} = setup({
 			api: () => ({
 				status: 302,
 				body: '',
 				headers: {location: 'https://l.example/'},
 			}),
 		});
-		const {results} = await serpcast.search('q', {engines: [recipe]});
+		const {results} = await searchcast.search('q', {engines: [recipe]});
 		expect(results).toEqual([{title: '302', url: 'https://l.example/'}]);
 	});
 
@@ -285,8 +285,8 @@ describe('code recipes: ctx.http goes through the transport', () => {
 			await ctx.http.json('https://api.test/', {kind: 'document'});
 			return [];
 		});
-		const {serpcast} = setup({api: () => ({body: '<html>challenge</html>'})});
-		const error = await onlyFailure(serpcast, recipe);
+		const {searchcast} = setup({api: () => ({body: '<html>challenge</html>'})});
+		const error = await onlyFailure(searchcast, recipe);
 		expect(error.kind).toBe('recipe');
 		expect(error.message).toMatch(/not JSON/);
 	});
@@ -296,8 +296,8 @@ describe('code recipes: ctx.http goes through the transport', () => {
 			await ctx.http.get('https://api.test/', {} as never);
 			return [];
 		});
-		const {serpcast, requests} = setup({api: () => json([])});
-		const error = await onlyFailure(serpcast, recipe);
+		const {searchcast, requests} = setup({api: () => json([])});
+		const error = await onlyFailure(searchcast, recipe);
 		expect(error.kind).toBe('recipe');
 		expect(error.message).toMatch(/request kind/);
 		expect(requests).toEqual([]);
@@ -318,13 +318,13 @@ describe('code recipes: ctx.http.post and postJson', () => {
 				return answer.hits;
 			},
 		};`);
-		const {serpcast, requests} = setup({
+		const {searchcast, requests} = setup({
 			pow: (request) =>
 				request.method === 'POST'
 					? json({hits: [{title: 'T', url: 'https://r.example/'}]})
 					: {body: '', setCookie: ['sid=1; Path=/']},
 		});
-		const response = await serpcast.search('q', {
+		const response = await searchcast.search('q', {
 			engines: [await loadCodeRecipe(path)],
 		});
 		expect(response.results).toEqual([{title: 'T', url: 'https://r.example/'}]);
@@ -355,11 +355,11 @@ describe('code recipes: ctx.http.post and postJson', () => {
 			});
 			return [{title: String(raw.status), url: 'https://r.example/'}];
 		});
-		const {serpcast, requests} = setup({
+		const {searchcast, requests} = setup({
 			api: (request) =>
 				request.url.endsWith('/form') ? {status: 403, body: ''} : json({}),
 		});
-		const {results} = await serpcast.search('q', {engines: [recipe]});
+		const {results} = await searchcast.search('q', {engines: [recipe]});
 		expect(results[0]!.title).toBe('403');
 		expect(requests.map((r) => [r.method, r.body, r.contentType])).toEqual([
 			['POST', 'a=1&b=x', 'application/x-www-form-urlencoded'],
@@ -387,25 +387,27 @@ describe('code recipes: ctx.http.post and postJson', () => {
 			);
 			return [];
 		});
-		const {serpcast} = setup({api: () => ({status, body: '{}'})});
-		const error = await onlyFailure(serpcast, recipe);
+		const {searchcast} = setup({api: () => ({status, body: '{}'})});
+		const error = await onlyFailure(searchcast, recipe);
 		expect(error.kind).toBe(kind);
 		expect(error.message).toMatch(`HTTP ${status}`);
 	});
 
 	it('postJson: an answer that is not JSON, or a value that cannot be JSON, is a recipe error', async () => {
-		const {serpcast} = setup({api: () => ({body: '<html>challenge</html>'})});
+		const {searchcast} = setup({api: () => ({body: '<html>challenge</html>'})});
 		const options = {kind: 'fetch', referer: 'https://api.test/'} as const;
 		const notJson = code('api', async (_, ctx) => {
 			await ctx.http.postJson('https://api.test/', {}, options);
 			return [];
 		});
-		expect((await onlyFailure(serpcast, notJson)).message).toMatch(/not JSON/);
+		expect((await onlyFailure(searchcast, notJson)).message).toMatch(
+			/not JSON/,
+		);
 		const badValue = code('api', async (_, ctx) => {
 			await ctx.http.postJson('https://api.test/', undefined, options);
 			return [];
 		});
-		const error = await onlyFailure(serpcast, badValue);
+		const error = await onlyFailure(searchcast, badValue);
 		expect(error.kind).toBe('recipe');
 		expect(error.message).toMatch(/not JSON-serializable/);
 	});
@@ -418,8 +420,8 @@ describe('code recipes: ctx.http.post and postJson', () => {
 			} as never);
 			return [];
 		});
-		const {serpcast, requests} = setup({api: () => json([])});
-		const error = await onlyFailure(serpcast, notFetch);
+		const {searchcast, requests} = setup({api: () => json([])});
+		const error = await onlyFailure(searchcast, notFetch);
 		expect(error.kind).toBe('recipe');
 		expect(error.message).toMatch(/fetch/);
 		expect(requests).toEqual([]);
@@ -433,7 +435,7 @@ describe('code recipes: ctx.http.post and postJson', () => {
 			} as never);
 			return [];
 		});
-		await serpcast.search('q', {engines: [sneaky]});
+		await searchcast.search('q', {engines: [sneaky]});
 		expect(requests[0]!.method).toBeUndefined();
 	});
 });
@@ -444,26 +446,26 @@ describe('code recipes: ctx.session', () => {
 		ctx.session.set('n', n);
 		return [{title: String(n), url: 'https://c.example/'}];
 	});
-	const titles = async (serpcast: ReturnType<typeof setup>['serpcast']) =>
-		(await serpcast.search('q', {engines: [counter]})).results[0]!.title;
+	const titles = async (searchcast: ReturnType<typeof setup>['searchcast']) =>
+		(await searchcast.search('q', {engines: [counter]})).results[0]!.title;
 
 	it('persists across searches until the idle time passes', async () => {
-		const {serpcast, time} = setup({}, {sessionIdleMs: 60_000});
-		expect(await titles(serpcast)).toBe('1');
+		const {searchcast, time} = setup({}, {sessionIdleMs: 60_000});
+		expect(await titles(searchcast)).toBe('1');
 		time.advance(59_999);
-		expect(await titles(serpcast)).toBe('2');
+		expect(await titles(searchcast)).toBe('2');
 		time.advance(60_000);
-		expect(await titles(serpcast)).toBe('1');
+		expect(await titles(searchcast)).toBe('1');
 	});
 
 	it('is dropped by clearSessions', async () => {
-		const {serpcast} = setup({});
-		await titles(serpcast);
-		await serpcast.clearSessions('count');
-		expect(await titles(serpcast)).toBe('1');
-		await titles(serpcast);
-		await serpcast.clearSessions();
-		expect(await titles(serpcast)).toBe('1');
+		const {searchcast} = setup({});
+		await titles(searchcast);
+		await searchcast.clearSessions('count');
+		expect(await titles(searchcast)).toBe('1');
+		await titles(searchcast);
+		await searchcast.clearSessions();
+		expect(await titles(searchcast)).toBe('1');
 	});
 
 	it('is kept when the search fails, like the cookies', async () => {
@@ -480,10 +482,10 @@ describe('code recipes: ctx.session', () => {
 				},
 			];
 		});
-		const {serpcast} = setup({});
-		await failure(serpcast.search('q', {engines: [recipe]}));
+		const {searchcast} = setup({});
+		await failure(searchcast.search('q', {engines: [recipe]}));
 		fail = false;
-		const {results} = await serpcast.search('q', {engines: [recipe]});
+		const {results} = await searchcast.search('q', {engines: [recipe]});
 		expect(results[0]!.title).toBe('{"t":"abc"}');
 	});
 
@@ -511,9 +513,9 @@ describe('code recipes: ctx.session', () => {
 	});
 
 	it("does not touch a declarative engine's session", async () => {
-		const {serpcast} = setup({a: () => pages.results('A')});
+		const {searchcast} = setup({a: () => pages.results('A')});
 		await expect(
-			serpcast.search('q', {engines: [engine('a')]}),
+			searchcast.search('q', {engines: [engine('a')]}),
 		).resolves.toMatchObject({engine: 'a'});
 	});
 });
@@ -543,8 +545,8 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 				await ctx.http.get(url, {kind: 'document'});
 			return [];
 		});
-		const {serpcast, requests} = setup({});
-		await serpcast.search('q', {engines: [recipe]});
+		const {searchcast, requests} = setup({});
+		await searchcast.search('q', {engines: [recipe]});
 		expect(requests.map((r) => [r.url, r.cookie])).toEqual([
 			['https://c.test/app/q', 'dir=1; tok#1=abc; sec=1; dom=1'],
 			['https://c.test/other', 'tok#1=abc; sec=1; dom=1'],
@@ -561,8 +563,8 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 				{title: ctx.cookies.get('https://h.test/'), url: 'https://r.example/'},
 			];
 		});
-		const {serpcast} = setup({});
-		const {results} = await serpcast.search('q', {engines: [recipe]});
+		const {searchcast} = setup({});
+		const {results} = await searchcast.search('q', {engines: [recipe]});
 		expect(results[0]!.title).toBe('a=1');
 	});
 
@@ -577,13 +579,13 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 			await ctx.http.get('https://g.test/next', {kind: 'document'});
 			return [{title: `${before}|${after}`, url: 'https://r.example/'}];
 		});
-		const {serpcast, requests} = setup({
+		const {searchcast, requests} = setup({
 			g: () => ({
 				body: '',
 				setCookie: ['server=s; Path=/; HttpOnly', 'seen=1; Path=/'],
 			}),
 		});
-		const {results} = await serpcast.search('q', {engines: [recipe]});
+		const {results} = await searchcast.search('q', {engines: [recipe]});
 		expect(results[0]!.title).toBe('seen=1; b=2|seen=1');
 		expect(requests[1]!.cookie).toBe('server=s; seen=1');
 	});
@@ -596,9 +598,9 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 			await ctx.http.get('https://p.test/', {kind: 'document'});
 			return [];
 		});
-		const {serpcast, requests, time} = setup({}, {sessionIdleMs: 60_000});
+		const {searchcast, requests, time} = setup({}, {sessionIdleMs: 60_000});
 		const cookie = async () => {
-			await serpcast.search('q', {engines: [recipe]});
+			await searchcast.search('q', {engines: [recipe]});
 			return requests.at(-1)!.cookie;
 		};
 		expect(await cookie()).toBe('k#1=v');
@@ -608,11 +610,11 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 		expect(await cookie()).toBeUndefined();
 		set = true;
 		expect(await cookie()).toBe('k#1=v');
-		await serpcast.clearSessions('p');
+		await searchcast.clearSessions('p');
 		expect(await cookie()).toBeUndefined();
 		set = true;
 		expect(await cookie()).toBe('k#1=v');
-		await serpcast.clearSessions();
+		await searchcast.clearSessions();
 		expect(await cookie()).toBeUndefined();
 	});
 
@@ -622,8 +624,8 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 			ctx.cookies.set('https://s.test/', 'a#b=1; Path=/');
 			return [];
 		});
-		const {serpcast} = setup({}, {store});
-		await serpcast.search('q', {engines: [recipe]});
+		const {searchcast} = setup({}, {store});
+		await searchcast.search('q', {engines: [recipe]});
 		const saved = (await store.get('engine/s/session')) as {
 			cookies: {name: string; value: string}[];
 		};
@@ -631,9 +633,9 @@ describe('code recipes: ctx.cookies (document.cookie)', () => {
 	});
 
 	it('a non-http(s) URL is a recipe error', async () => {
-		const {serpcast} = setup({});
+		const {searchcast} = setup({});
 		const error = await onlyFailure(
-			serpcast,
+			searchcast,
 			code('u', (_, ctx) => {
 				ctx.cookies.set('javascript:x', 'a=1');
 				return [];
@@ -671,9 +673,9 @@ describe('code recipes: output and errors', () => {
 			/"rank" is not a string/,
 		],
 	])('%s is a recipe error', async (_, output, message) => {
-		const {serpcast} = setup({});
+		const {searchcast} = setup({});
 		const error = await onlyFailure(
-			serpcast,
+			searchcast,
 			code('m', () => output as never),
 		);
 		expect(error.kind).toBe('recipe');
@@ -681,8 +683,8 @@ describe('code recipes: output and errors', () => {
 	});
 
 	it('passes well-formed results through (extra string fields kept, undefined dropped)', async () => {
-		const {serpcast} = setup({});
-		const {results} = await serpcast.search('q', {
+		const {searchcast} = setup({});
+		const {results} = await searchcast.search('q', {
 			engines: [
 				code('ok', () => [
 					{
@@ -700,8 +702,8 @@ describe('code recipes: output and errors', () => {
 	});
 
 	it('[] is an answer: the module says there are no results', async () => {
-		const {serpcast, hits} = setup({b: () => pages.results('B')});
-		const response = await serpcast.search('q', {
+		const {searchcast, hits} = setup({b: () => pages.results('B')});
+		const response = await searchcast.search('q', {
 			engines: [code('none', () => []), engine('b')],
 		});
 		expect(response).toEqual({results: [], engine: 'none', failures: []});
@@ -710,7 +712,7 @@ describe('code recipes: output and errors', () => {
 
 	it('receives maxResults, and the answer is cut to it anyway', async () => {
 		let seen: number | undefined;
-		const {serpcast} = setup({});
+		const {searchcast} = setup({});
 		const many = code('many', (_, ctx) => {
 			seen = ctx.maxResults;
 			return ['1', '2', '3'].map((t) => ({
@@ -718,7 +720,7 @@ describe('code recipes: output and errors', () => {
 				url: `https://u.example/${t}`,
 			}));
 		});
-		const {results} = await serpcast.search('q', {
+		const {results} = await searchcast.search('q', {
 			engines: [many],
 			maxResults: 2,
 		});
@@ -732,25 +734,25 @@ describe('code recipes: output and errors', () => {
 			calls++;
 			return ctx.blocked('captcha');
 		});
-		const {serpcast, time} = setup({b: () => pages.results('B')});
-		const first = await serpcast.search('q', {engines: [wall, engine('b')]});
+		const {searchcast, time} = setup({b: () => pages.results('B')});
+		const first = await searchcast.search('q', {engines: [wall, engine('b')]});
 		expect(first.failures[0]!.error).toMatchObject({
 			kind: 'blocked',
 			message: 'wall: blocked (captcha)',
 		});
 		time.advance(DEFAULT_COOLDOWN_MS - 1);
-		const second = await serpcast.search('q', {engines: [wall, engine('b')]});
+		const second = await searchcast.search('q', {engines: [wall, engine('b')]});
 		expect(second.failures[0]!.error.message).toMatch(/cooling down/);
 		expect(calls).toBe(1);
 		time.advance(1);
-		await serpcast.search('q', {engines: [wall, engine('b')]});
+		await searchcast.search('q', {engines: [wall, engine('b')]});
 		expect(calls).toBe(2);
 	});
 
 	it('recipeError() is a recipe error and starts no cooldown', async () => {
-		const {serpcast} = setup({});
+		const {searchcast} = setup({});
 		const error = await onlyFailure(
-			serpcast,
+			searchcast,
 			code('r', (_, ctx) => ctx.recipeError('layout changed')),
 		);
 		expect(error).toMatchObject({kind: 'recipe', message: 'r: layout changed'});
@@ -758,8 +760,8 @@ describe('code recipes: output and errors', () => {
 
 	it('any other throw is a recipe error carrying the cause', async () => {
 		const bug = new TypeError('x is undefined');
-		const {serpcast, hits} = setup({b: () => pages.results('B')});
-		const response = await serpcast.search('q', {
+		const {searchcast, hits} = setup({b: () => pages.results('B')});
+		const response = await searchcast.search('q', {
 			engines: [
 				code('t', () => {
 					throw bug;
@@ -775,8 +777,8 @@ describe('code recipes: output and errors', () => {
 	});
 
 	it('an impersonation error from ctx.http aborts the whole search', async () => {
-		const {serpcast, hits} = setup({
-			api: () => ({throw: new SerpcastError('impersonation', 'no library')}),
+		const {searchcast, hits} = setup({
+			api: () => ({throw: new SearchcastError('impersonation', 'no library')}),
 			b: () => pages.results('B'),
 		});
 		const recipe = code('api', async (_, ctx) => {
@@ -784,7 +786,7 @@ describe('code recipes: output and errors', () => {
 			return [];
 		});
 		const error = await failure(
-			serpcast.search('q', {engines: [recipe, engine('b')]}),
+			searchcast.search('q', {engines: [recipe, engine('b')]}),
 		);
 		expect(error.kind).toBe('impersonation');
 		expect(hits('b')).toHaveLength(0);
@@ -805,8 +807,8 @@ describe('code recipes: output and errors', () => {
 			},
 			{timeoutMs: 20},
 		);
-		const {serpcast} = setup({});
-		const error = await onlyFailure(serpcast, slow);
+		const {searchcast} = setup({});
+		const error = await onlyFailure(searchcast, slow);
 		expect(error).toMatchObject({
 			kind: 'timeout',
 			message: 'slow: timed out after 20 ms',
@@ -818,7 +820,7 @@ describe('code recipes: output and errors', () => {
 	it("rejects with the caller's reason when aborted, calling no later engine", async () => {
 		const controller = new AbortController();
 		const reason = new Error('stop');
-		const {serpcast, hits} = setup({b: () => pages.results('B')});
+		const {searchcast, hits} = setup({b: () => pages.results('B')});
 		const waits = code('waits', (_, ctx) => {
 			controller.abort(reason);
 			return new Promise((_, reject) =>
@@ -826,7 +828,7 @@ describe('code recipes: output and errors', () => {
 			);
 		});
 		await expect(
-			serpcast.search('q', {
+			searchcast.search('q', {
 				engines: [waits, engine('b')],
 				signal: controller.signal,
 			}),

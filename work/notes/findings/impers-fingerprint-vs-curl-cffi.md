@@ -3,6 +3,7 @@ title: impers vs curl_cffi, Chrome 146 fingerprint with our own headers and no r
 slug: impers-fingerprint-vs-curl-cffi
 source: 'captured live 2026-09-28 (UTC ~18:00-18:45) against the echo service tls.browserleaks.com (/json for TLS, /http2 for HTTP/2 frames and header order); tls.peet.ws timed out from this host. Clients: impers 0.1.2 from npm (koffi 3.3.2) on Node 24.19.0 (nixpkgs nodejs-slim, cross-checked on the official nodejs.org v24.19.0 linux-x64 binary) vs curl_cffi 0.16.0 on Python 3.14.7 (nixpkgs). Both loaded the SAME libcurl-impersonate 2.1.1 file, /nix/store/0djkdm67a5jj9vl7hs8cj5cib64mxxqc-curl-impersonate-2.1.1 (the store path in the running SearXNG closure, next to /nix/store/qgfj9khvnrh9m9a6znj5cq9ps1jvqzps-python3.14-curl-cffi-0.16.0). Target chrome146. impers source read at github.com/lexiforest/impers HEAD b7bbb24 (2026-09-01) and in the npm 0.1.2 dist; curl-impersonate source read at tag v2.1.1. Header tables checked against a net-log capture of real Chromium 152.0.7977.82 (Linux, headless) on the same date. Single host, single day, one echo service: re-measure when any of these versions move.'
 ---
+> Names changed since this was written, see [ADR 0005](../../../docs/adr/0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md): read "serpcast" here as `searchcast`, "serpcast-recipe" as `@searchcast/recipe`, and "searchcast" (the browser runner) as `@searchcast/browser`.
 
 # impers vs curl_cffi: Chrome 146 fingerprint with our own headers and no runtime download
 

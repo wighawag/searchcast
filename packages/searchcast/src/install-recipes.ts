@@ -1,6 +1,6 @@
-// `serpcast install-recipes`: install a set of recipes from a release archive
+// `searchcast install-recipes`: install a set of recipes from a release archive
 // (a URL or a local file), only when the user types it (ADR 0002): imported by
-// cli.ts and by `serpcast/install` (install-api.ts, for embedders), never by
+// cli.ts and by `searchcast/install` (install-api.ts, for embedders), never by
 // the main entry. Code recipes are code with
 // full Node access, so what gets installed must be exactly what the user chose
 // to trust: the archive's sha256 is REQUIRED (for URLs and files alike) and
@@ -11,6 +11,8 @@
 // The archive format is checked as a whole first (recipe-archive.ts), then
 // the set is written to a temporary directory beside its destination and
 // renamed into place, with a `.source.json` recording where it came from.
+// The default base is `recipesDir()`, in searchcast's data directory: never
+// serpcast's old one, whose sets are read but not written (ADR 0005).
 //
 // Decisions (task install-recipes-command, 2026-09-29):
 // - `--name` wins over the manifest's name (the manifest only supplies the
