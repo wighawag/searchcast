@@ -1,5 +1,12 @@
 name: release
 
+# The one release path of the monorepo. It publishes every package of the
+# workspace, each with its own version: `searchcast` (packages/searchcast),
+# `@searchcast/browser` (packages/browser) and `@searchcast/recipe`
+# (packages/recipe). Keep this file's name: on npm, every one of those names is
+# bound to the trusted publisher repo wighawag/searchcast + workflow
+# release.yml, so renaming it breaks every publish.
+#
 # Changesets release flow:
 #   1. Land PRs that include a changeset (`.changeset/*.md`) on main.
 #   2. This workflow opens/updates a "Version Packages" PR that bumps versions
@@ -9,14 +16,22 @@ name: release
 #      whose version is already on npm is skipped, so releasing one package of
 #      the monorepo does not republish the others.
 #
+#   Before publishing, `release:ci` runs the release guards: no version or plan
+#   at >= 1.0.0 and no planned major (scripts/release-plan.mjs; 1.0 needs an
+#   explicit decision), and every tarball's shape, license and manifest
+#   (scripts/pack-check.mjs). A failing guard stops the run before npm.
+#
 # Auth is npm Trusted Publishing (OIDC): NO NPM_TOKEN secret. npm trusts this
-# repo + workflow (release.yml) via the trusted publisher registered on the
+# repo + workflow (release.yml) via the trusted publisher registered in each
 # package's npmjs.com settings. The OIDC handshake needs `id-token: write`,
 # Node >= 22, and a recent pnpm; publishes are stamped with provenance.
-# `searchcast@0.0.0` was published by hand to reserve the name, because a
-# trusted publisher can only be registered on an existing package. With that
-# registered (repo wighawag/searchcast, workflow release.yml), every release,
-# starting from the first 0.1.0 bump, goes through this tokenless OIDC flow.
+# A trusted publisher can only be registered on an existing package, so each
+# name was reserved by hand first: `searchcast@0.0.0`, then the scoped
+# `@searchcast/browser@0.0.0` and `@searchcast/recipe@0.0.0`. With the
+# publisher registered on each (repo wighawag/searchcast, workflow
+# release.yml), every release goes through this tokenless OIDC flow. There is
+# no local publish path: no package has a `release` script, and no npm token
+# is used anywhere.
 on:
   push:
     branches: [main]
