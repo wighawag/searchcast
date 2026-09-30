@@ -10,7 +10,8 @@ name: test
 #                        plain libcurl (SEARCHCAST_TEST_PLAIN_LIBCURL); the
 #                        `searchcast serve` end-to-end tests need the Chrome,
 #                        and some cases Xvfb, systemd-socket-activate, unshare
-#                        and a Python that imports SearXNG
+#                        (unprivileged user namespaces, allowed by a step
+#                        below) and a Python that imports SearXNG
 #                        (SEARCHCAST_TEST_SEARXNG_PYTHON).
 # Locally those tests skip themselves with a message. Here every one must run:
 # `pnpm test:ci` ends with scripts/no-skips.mjs, which fails the job if any test
@@ -95,6 +96,18 @@ jobs:
           chmod +x "$py"
           "$py" -c 'import searx.exceptions'
           echo "SEARCHCAST_TEST_SEARXNG_PYTHON=$py" >> "$GITHUB_ENV"
+
+      # The no-loopback case of `searchcast serve` (packages/searchcast/test/
+      # serve.test.ts) runs the CLI in a fresh network namespace made with
+      # `unshare -Un --map-current-user`, as the runner's own uid. Ubuntu 24's
+      # AppArmor restricts unprivileged user namespaces, so that fails on the
+      # runner and the case would skip (and fail the no-skip check). Lift the
+      # restriction for this disposable job only. Chrome keeps --no-sandbox
+      # below regardless.
+      - name: Allow unprivileged user namespaces
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare -Un --map-current-user true
 
       # With the build above, the `verify` gate of dorfl.json, plus the
       # no-skip check. The browser tests (packages/browser, and the searchcast
