@@ -32,6 +32,7 @@ import {
 	tree,
 } from './release.js';
 import {CA_PATH, startConnectProxy, startH2Server} from './servers.js';
+import {HIDE_ARGS, hideEnv} from './platform-packages.js';
 
 const LIB = process.env.SEARCHCAST_LIBCURL_PATH;
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
@@ -83,11 +84,12 @@ describe('searchcast doctor (no native library needed)', () => {
 		const proxy = await listener();
 		try {
 			for (const extra of [[], ['--remote']]) {
+				// No platform package either (CI builds linux-x64's).
 				const {code, stdout} = await failed(
 					run(
 						process.execPath,
-						[cli, 'doctor', '--proxy', proxy.url, ...extra],
-						{env},
+						[...HIDE_ARGS, cli, 'doctor', '--proxy', proxy.url, ...extra],
+						{env: hideEnv(env)},
 					),
 				);
 				expect(code).toBe(1);

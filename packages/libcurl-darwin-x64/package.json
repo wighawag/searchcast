@@ -1,0 +1,39 @@
+{
+	"name": "@searchcast/libcurl-darwin-x64",
+	"version": "0.0.0",
+	"description": "The pinned libcurl-impersonate shared library for macOS x64, installed automatically with searchcast. Contains only the library and its license notices.",
+	"license": "MIT AND curl AND Apache-2.0 AND BSD-3-Clause AND Zlib",
+	"keywords": [
+		"searchcast",
+		"libcurl-impersonate",
+		"libcurl",
+		"native"
+	],
+	"author": "wighawag",
+	"homepage": "https://github.com/wighawag/searchcast/tree/main/packages/libcurl-darwin-x64#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wighawag/searchcast.git",
+		"directory": "packages/libcurl-darwin-x64"
+	},
+	"bugs": {
+		"url": "https://github.com/wighawag/searchcast/issues"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"os": [
+		"darwin"
+	],
+	"cpu": [
+		"x64"
+	],
+	"files": [
+		"libcurl-impersonate.dylib",
+		"LICENSE",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"prepack": "node ../../scripts/libcurl-packages.mjs check"
+	}
+}

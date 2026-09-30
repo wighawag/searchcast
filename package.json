@@ -15,6 +15,7 @@
 		"test:ci": "pnpm check:release && pnpm --filter './packages/*' test --reporter=default --reporter=json --outputFile=vitest-report.json && pnpm check:pack && node scripts/no-skips.mjs",
 		"check:release": "node scripts/release-plan.mjs",
 		"check:pack": "node scripts/pack-check.mjs",
-		"release:ci": "pnpm format:check && pnpm build && pnpm check:release && pnpm check:pack && pnpm changeset publish"
+		"build:libcurl": "node scripts/libcurl-packages.mjs build",
+		"release:ci": "pnpm format:check && pnpm build && pnpm check:release && node scripts/pack-check.mjs --require-payloads && pnpm changeset publish"
 	}
 }

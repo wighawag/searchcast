@@ -21,6 +21,7 @@ import {
 	type SerpcastOptions,
 } from '../src/index.js';
 import {fakeTransport} from './engines.js';
+import {HIDE_ARGS, hideEnv} from './platform-packages.js';
 
 const run = promisify(execFile);
 // The built bin; the verify gate builds before it tests.
@@ -169,7 +170,13 @@ describe('searchcast query (no native library needed)', () => {
 			ready: '#x',
 			results,
 		});
-		await expect(query('--recipe', nav, 'q')).rejects.toMatchObject({
+		// No platform package either (CI builds linux-x64's).
+		const hidden = run(
+			process.execPath,
+			[...HIDE_ARGS, cli, 'query', '--recipe', nav, 'q'],
+			{env: hideEnv(env)},
+		);
+		await expect(hidden).rejects.toMatchObject({
 			code: 1,
 			stderr: expect.stringMatching(/^searchcast: impersonation: /),
 		});
