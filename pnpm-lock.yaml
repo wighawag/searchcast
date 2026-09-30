@@ -15,7 +15,41 @@ importers:
         specifier: ^3.8.4
         version: 3.9.9
 
-  packages/serpcast:
+  packages/browser:
+    dependencies:
+      serpcast-recipe:
+        specifier: ^0.1.0
+        version: 0.1.0
+    devDependencies:
+      '@changesets/cli':
+        specifier: ^2.31.1
+        version: 2.31.1(@types/node@25.9.8)
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.8
+      prettier:
+        specifier: ^3.8.4
+        version: 3.9.9
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.11(@types/node@25.9.8)(vite@8.3.1(@types/node@25.9.8))
+
+  packages/recipe:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.8
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.11(@types/node@25.9.8)(vite@8.3.1(@types/node@25.9.8))
+
+  packages/searchcast:
     dependencies:
       css-select:
         specifier: ^7.0.0
@@ -34,19 +68,7 @@ importers:
         version: 0.1.1
       serpcast-recipe:
         specifier: workspace:*
-        version: link:../serpcast-recipe
-    devDependencies:
-      '@types/node':
-        specifier: ^25.2.0
-        version: 25.9.8
-      typescript:
-        specifier: ^5.3.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.18
-        version: 4.1.11(@types/node@25.9.8)(vite@8.3.1(@types/node@25.9.8))
-
-  packages/serpcast-recipe:
+        version: link:../recipe
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -826,6 +848,9 @@ packages:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
+
+  serpcast-recipe@0.1.0:
+    resolution: {integrity: sha512-LSrrKiWcaatb0qVuIJu7Udh+Hhla2gTSNDuu1ybnOlenyrObsurcU+r74p9AEJKqkW+aSS3/YtopV1POBvl6LA==}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -1732,6 +1757,8 @@ snapshots:
   searchcast@0.1.1: {}
 
   semver@7.8.5: {}
+
+  serpcast-recipe@0.1.0: {}
 
   shebang-command@2.0.0:
     dependencies:

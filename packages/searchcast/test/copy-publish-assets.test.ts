@@ -130,7 +130,7 @@ describe('package wiring', () => {
 		);
 
 	it('serpcast runs the script on prepack and is AGPL', () => {
-		const pkg = manifest('serpcast');
+		const pkg = manifest('searchcast');
 		expect(pkg.scripts.prepack).toBe(
 			'node ../../scripts/copy-publish-assets.mjs',
 		);
@@ -138,7 +138,7 @@ describe('package wiring', () => {
 	});
 
 	it('serpcast-recipe keeps its own README and MIT LICENSE', () => {
-		const pkg = manifest('serpcast-recipe');
+		const pkg = manifest('recipe');
 		expect(pkg.scripts.prepack).toBeUndefined();
 		expect(pkg.license).toBe('MIT');
 	});
