@@ -1,5 +1,25 @@
 name: test
 
+# The one CI workflow of the monorepo: every package's tests, and the release
+# guards, on every push to main and every pull request.
+#   packages/recipe      @searchcast/recipe: pure tests, no environment needed.
+#   packages/browser     @searchcast/browser: the browser tests need a Chrome
+#                        (SEARCHCAST_CHROME, SEARCHCAST_TEST_CHROME_ARGS).
+#   packages/searchcast  searchcast: the native transport tests need the pinned
+#                        libcurl-impersonate (SEARCHCAST_LIBCURL_PATH) and a
+#                        plain libcurl (SEARCHCAST_TEST_PLAIN_LIBCURL); the
+#                        `searchcast serve` end-to-end tests need the Chrome,
+#                        and some cases Xvfb, systemd-socket-activate, unshare
+#                        and a Python that imports SearXNG
+#                        (SEARCHCAST_TEST_SEARXNG_PYTHON).
+# Locally those tests skip themselves with a message. Here every one must run:
+# `pnpm test:ci` ends with scripts/no-skips.mjs, which fails the job if any test
+# was skipped (it has no allowed exceptions today; an exception must be named
+# in its ALLOWED_SKIPS, commented, and recorded).
+# `pnpm test:ci` also runs the release guards: scripts/release-plan.mjs (no
+# version or plan at >= 1.0.0, no planned major) and scripts/pack-check.mjs
+# (each publishable package's tarball shape, license and manifest).
+
 on:
   push:
     branches: [main]
@@ -34,8 +54,7 @@ jobs:
       # release pinned in LIBCURL_IMPERSONATE (packages/searchcast/src/libcurl.ts)
       # with `searchcast install-libcurl` itself (which verifies its checksum),
       # into a temporary data directory, and point the tests at it. The
-      # plain-libcurl tests use the runner's system libcurl. Locally, without
-      # these variables, those tests are skipped with a message.
+      # plain-libcurl tests use the runner's system libcurl.
       - name: Install pinned libcurl-impersonate
         run: |
           lib="$(XDG_DATA_HOME="$RUNNER_TEMP/xdg" node packages/searchcast/dist/cli.js install-libcurl)"
@@ -44,15 +63,48 @@ jobs:
           test -e "$plain"
           echo "SEARCHCAST_TEST_PLAIN_LIBCURL=$plain" >> "$GITHUB_ENV"
 
-      # With the build above, the same gate as `verify` in dorfl.json.
-      # The browser tests (packages/browser, and the searchcast serve
-      # end-to-end tests in packages/searchcast) drive the runner's preinstalled
-      # Google Chrome against a local fixture site. --no-sandbox because
-      # Ubuntu's AppArmor policy blocks the unprivileged user namespaces
-      # Chrome's sandbox wants; the runner is disposable and the browser only
-      # ever loads the fixture.
+      # The headful `searchcast serve --xvfb` case needs an Xvfb on PATH.
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb
+          command -v Xvfb
+
+      # The SearXNG engine case (packages/searchcast/test/serve.test.ts) loads
+      # integrations/searxng/searchcast.py in a Python that can `import searx`.
+      # SearXNG has no releases, so a fixed commit is checked out and its
+      # requirements installed in a virtualenv; a wrapper puts it on PYTHONPATH.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install SearXNG
+        env:
+          SEARXNG_COMMIT: a9d99003344ac3879ec45c56c661283482a92a39
+        run: |
+          src="$RUNNER_TEMP/searxng"
+          venv="$RUNNER_TEMP/searxng-venv"
+          git init -q "$src"
+          git -C "$src" fetch -q --depth 1 https://github.com/searxng/searxng.git "$SEARXNG_COMMIT"
+          git -C "$src" checkout -q FETCH_HEAD
+          python -m venv "$venv"
+          "$venv/bin/pip" install -q -r "$src/requirements.txt"
+          py="$RUNNER_TEMP/searxng-python"
+          printf '#!/bin/sh\nPYTHONPATH="%s" exec "%s" "$@"\n' "$src" "$venv/bin/python" > "$py"
+          chmod +x "$py"
+          "$py" -c 'import searx.exceptions'
+          echo "SEARCHCAST_TEST_SEARXNG_PYTHON=$py" >> "$GITHUB_ENV"
+
+      # With the build above, the `verify` gate of dorfl.json, plus the
+      # no-skip check. The browser tests (packages/browser, and the searchcast
+      # serve end-to-end tests in packages/searchcast) drive the runner's
+      # preinstalled Google Chrome against a local fixture site. --no-sandbox
+      # because Ubuntu's AppArmor policy blocks the unprivileged user
+      # namespaces Chrome's sandbox wants; the runner is disposable and the
+      # browser only ever loads the fixture.
       - name: Test
-        run: pnpm test
+        run: pnpm test:ci
         env:
           SEARCHCAST_CHROME: /usr/bin/google-chrome
           SEARCHCAST_TEST_CHROME_ARGS: --no-sandbox
