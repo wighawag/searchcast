@@ -1,7 +1,13 @@
 // `searchcast install-libcurl`: the ONLY code in searchcast that downloads the
 // native library, and it runs only when the user invokes that command or an
 // embedder calls `installLibcurl` from `searchcast/install` (ADR 0002; imported
-// by cli.ts and install-api.ts, never reachable from the main entry). It
+// by cli.ts and install-api.ts, never reachable from the main entry). On the
+// pinned platforms npm normally installs the library with searchcast, as the
+// platform package `@searchcast/libcurl-<platform>` (an optional dependency);
+// this command is the fallback when optional dependencies were skipped. The
+// release workflow builds those packages with this module's `fetchLibrary`
+// (from scripts/libcurl-packages.mjs), so they are verified and unpacked
+// exactly as an install is. It
 // fetches the archive LIBCURL_IMPERSONATE pins for this platform (the same
 // constant CI installs from), through the caller's proxy only, verifies its
 // sha256 BEFORE writing anything, takes the one library file out of the
@@ -84,63 +90,31 @@ const IDLE_TIMEOUT_MS = 60_000;
 export async function installLibcurl(
 	options: InstallOptions = {},
 ): Promise<InstallResult> {
-	const maxArchiveBytes =
-		checkNumber('maxArchiveBytes', options.maxArchiveBytes, {
-			integer: true,
-			max: MAX_ARCHIVE_BYTES,
-		}) ?? MAX_ARCHIVE_BYTES;
-	const maxUnpackedBytes =
-		checkNumber('maxUnpackedBytes', options.maxUnpackedBytes, {
-			integer: true,
-			max: MAX_UNPACKED_BYTES,
-		}) ?? MAX_UNPACKED_BYTES;
 	const release: Release = options.release ?? LIBCURL_IMPERSONATE;
-	const log = options.log ?? (() => {});
 	const platform = `${process.platform}-${process.arch}`;
-	const asset = release.assets[platform];
-	if (!asset) {
-		throw new InstallError(
-			`no pinned libcurl-impersonate ${release.version} archive for ${platform} (pinned: ${Object.keys(release.assets).join(', ')}). Install libcurl-impersonate yourself and set SEARCHCAST_LIBCURL_PATH to it.`,
-		);
-	}
-	const url = release.baseUrl + asset.archive;
-	let via = '';
-	let archive: {url: string; body: Buffer};
+	let fetched: FetchedLibrary;
 	try {
-		if (options.proxy) via = ` via ${describeProxy(options.proxy)}`;
-		log(`downloading ${url}${via}`);
-		archive = await download(url, {
+		fetched = await fetchLibrary(platform, {
+			release,
 			proxy: options.proxy,
-			maxBytes: maxArchiveBytes,
-			idleTimeoutMs: IDLE_TIMEOUT_MS,
+			log: options.log,
+			maxArchiveBytes: options.maxArchiveBytes,
+			maxUnpackedBytes: options.maxUnpackedBytes,
 		});
-	} catch (cause) {
-		throw new InstallError(
-			`downloading ${url}${via} failed: ${(cause as Error).message}. Nothing was installed.`,
-			{cause},
-		);
+	} catch (error) {
+		if (!(error instanceof InstallError)) throw error; // a RangeError: a bad cap
+		throw new InstallError(`${error.message} Nothing was installed.`, {
+			cause: error.cause,
+		});
 	}
-	const sha256 = createHash('sha256').update(archive.body).digest('hex');
-	if (sha256 !== asset.sha256) {
-		throw new InstallError(
-			`checksum mismatch for ${asset.archive} (from ${archive.url}): got sha256 ${sha256}, pinned ${asset.sha256}. Nothing was installed.`,
-		);
-	}
-	log(
-		`verified sha256 ${sha256} (pinned for libcurl-impersonate ${release.version} ${platform})`,
-	);
-	const library = extract(archive.body, asset.library, maxUnpackedBytes);
-	if (!library) {
-		throw new InstallError(
-			`${asset.archive} has no file ${asset.library}. Nothing was installed.`,
-		);
-	}
+	const {library, url} = fetched;
+	const log = options.log ?? (() => {});
 	const dir = dataDir(options.env ?? process.env);
 	const path = join(dir, libraryFileName());
 	const existing = existsSync(path) ? readFileSync(path) : undefined;
 	if (existing?.equals(library)) {
 		log(`already installed: ${path}`);
-		return {path, url: archive.url, status: 'unchanged'};
+		return {path, url, status: 'unchanged'};
 	}
 	if (existing && !options.force) {
 		throw new InstallError(
@@ -157,7 +131,94 @@ export async function installLibcurl(
 		throw cause;
 	}
 	log(`installed ${path}`);
-	return {path, url: archive.url, status: existing ? 'replaced' : 'installed'};
+	return {path, url, status: existing ? 'replaced' : 'installed'};
+}
+
+/** What `fetchLibrary` got: the library's bytes and where they came from. */
+export interface FetchedLibrary {
+	/** The library file, taken unmodified out of the archive. */
+	library: Buffer;
+	/** Where the archive was downloaded from (after redirects). */
+	url: string;
+	/** The archive's file name and its verified sha256 (the pinned one). */
+	archive: string;
+	sha256: string;
+}
+
+export interface FetchOptions {
+	/** The release. Default `LIBCURL_IMPERSONATE`. */
+	release?: Release;
+	proxy?: string;
+	log?: (line: string) => void;
+	/** Size caps; each at most (and by default) the ceiling. */
+	maxArchiveBytes?: number;
+	maxUnpackedBytes?: number;
+}
+
+/**
+ * The download half of `installLibcurl`, for one pinned `platform`: download
+ * its archive (through `proxy` only), verify its sha256 against the pin BEFORE
+ * unpacking anything, and take the pinned `library` entry (a regular file,
+ * never a symlink) out of it, within the size caps. Writes nothing. Shared by
+ * `installLibcurl` and the release workflow's build of the platform packages
+ * (scripts/libcurl-packages.mjs), so both verify and unpack the same way.
+ * Throws an `InstallError` (after which nothing has been written anywhere).
+ */
+export async function fetchLibrary(
+	platform: string,
+	options: FetchOptions = {},
+): Promise<FetchedLibrary> {
+	const maxArchiveBytes =
+		checkNumber('maxArchiveBytes', options.maxArchiveBytes, {
+			integer: true,
+			max: MAX_ARCHIVE_BYTES,
+		}) ?? MAX_ARCHIVE_BYTES;
+	const maxUnpackedBytes =
+		checkNumber('maxUnpackedBytes', options.maxUnpackedBytes, {
+			integer: true,
+			max: MAX_UNPACKED_BYTES,
+		}) ?? MAX_UNPACKED_BYTES;
+	const release: Release = options.release ?? LIBCURL_IMPERSONATE;
+	const log = options.log ?? (() => {});
+	const asset = Object.hasOwn(release.assets, platform)
+		? release.assets[platform]
+		: undefined;
+	if (!asset) {
+		throw new InstallError(
+			`no pinned libcurl-impersonate ${release.version} archive for ${platform} (pinned: ${Object.keys(release.assets).join(', ')}), so there is no platform package for it either. Install libcurl-impersonate yourself and set SEARCHCAST_LIBCURL_PATH to it.`,
+		);
+	}
+	const url = release.baseUrl + asset.archive;
+	let via = '';
+	let archive: {url: string; body: Buffer};
+	try {
+		if (options.proxy) via = ` via ${describeProxy(options.proxy)}`;
+		log(`downloading ${url}${via}`);
+		archive = await download(url, {
+			proxy: options.proxy,
+			maxBytes: maxArchiveBytes,
+			idleTimeoutMs: IDLE_TIMEOUT_MS,
+		});
+	} catch (cause) {
+		throw new InstallError(
+			`downloading ${url}${via} failed: ${(cause as Error).message}.`,
+			{cause},
+		);
+	}
+	const sha256 = createHash('sha256').update(archive.body).digest('hex');
+	if (sha256 !== asset.sha256) {
+		throw new InstallError(
+			`checksum mismatch for ${asset.archive} (from ${archive.url}): got sha256 ${sha256}, pinned ${asset.sha256}.`,
+		);
+	}
+	log(
+		`verified sha256 ${sha256} (pinned for libcurl-impersonate ${release.version} ${platform})`,
+	);
+	const library = extract(archive.body, asset.library, maxUnpackedBytes);
+	if (!library) {
+		throw new InstallError(`${asset.archive} has no file ${asset.library}.`);
+	}
+	return {library, url: archive.url, archive: asset.archive, sha256};
 }
 
 /** The regular file `name` in a .tar.gz, or undefined. */

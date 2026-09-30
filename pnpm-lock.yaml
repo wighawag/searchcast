@@ -34,6 +34,16 @@ importers:
         specifier: ^4.0.18
         version: 4.1.11(@types/node@25.9.8)(vite@8.3.1(@types/node@25.9.8))
 
+  packages/libcurl-darwin-arm64: {}
+
+  packages/libcurl-darwin-x64: {}
+
+  packages/libcurl-linux-arm64: {}
+
+  packages/libcurl-linux-x64: {}
+
+  packages/libcurl-win32-x64: {}
+
   packages/recipe:
     devDependencies:
       '@types/node':
@@ -76,6 +86,22 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.1.11(@types/node@25.9.8)(vite@8.3.1(@types/node@25.9.8))
+    optionalDependencies:
+      '@searchcast/libcurl-darwin-arm64':
+        specifier: workspace:*
+        version: link:../libcurl-darwin-arm64
+      '@searchcast/libcurl-darwin-x64':
+        specifier: workspace:*
+        version: link:../libcurl-darwin-x64
+      '@searchcast/libcurl-linux-arm64':
+        specifier: workspace:*
+        version: link:../libcurl-linux-arm64
+      '@searchcast/libcurl-linux-x64':
+        specifier: workspace:*
+        version: link:../libcurl-linux-x64
+      '@searchcast/libcurl-win32-x64':
+        specifier: workspace:*
+        version: link:../libcurl-win32-x64
 
 packages:
 

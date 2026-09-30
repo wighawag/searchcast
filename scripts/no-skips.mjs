@@ -2,9 +2,11 @@
 // "No silent skip" guard for CI: locally, the native tests (no
 // libcurl-impersonate), the browser tests (no Chrome) and a few CLI cases (no
 // Xvfb, no SearXNG, ...) skip themselves with a message; in CI every one of
-// them must run. After `pnpm test:ci`, each package under packages/ has a
-// vitest JSON report (`vitest-report.json`); this fails when a package has no
-// report, or when any test in a report did not run, unless it is one of the
+// them must run. After `pnpm test:ci`, each package under packages/ that has a
+// `test` script has a vitest JSON report (`vitest-report.json`; the platform
+// packages `@searchcast/libcurl-<platform>` carry no code and have no tests:
+// their library is tested from searchcast); this fails when such a package has
+// no report, or when any test in a report did not run, unless it is one of the
 // ALLOWED_SKIPS below (none today: each exception is a named, commented,
 // recorded decision, also mentioned in .github/workflows/test.yml).
 
@@ -34,7 +36,12 @@ export function checkReports(root, allowed = ALLOWED_SKIPS) {
 	const dirs = readdirSync(base, {withFileTypes: true})
 		.filter((d) => d.isDirectory())
 		.map((d) => join(base, d.name))
-		.filter((dir) => existsSync(join(dir, 'package.json')));
+		.filter((dir) => existsSync(join(dir, 'package.json')))
+		.filter(
+			(dir) =>
+				JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts
+					?.test !== undefined,
+		);
 	for (const dir of dirs) {
 		const path = join(dir, REPORT);
 		if (!existsSync(path)) {

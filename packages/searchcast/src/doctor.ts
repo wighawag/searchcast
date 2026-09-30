@@ -6,6 +6,10 @@
 // skipped when impersonation is not active: it would only show a non-browser
 // fingerprint, sent where the user asked for a check of a browser one.
 //
+// The library's source is the setting or place it was found in, the platform
+// package named with its name and version (`@searchcast/libcurl-<platform>`,
+// the optional dependency npm installed with searchcast).
+//
 // For the one-release fallbacks of ADR 0005 it says when the library came from
 // an old name (`SERPCAST_LIBCURL_PATH`, serpcast's data directory) and which
 // new one to use, and lists what is read from the old data directory with the
@@ -18,6 +22,7 @@ import {
 	loadLibcurl,
 	locateLibrary,
 	type LibrarySource,
+	type PlatformPackage,
 } from './libcurl.js';
 import {IMPERSONATE_TARGET} from './chrome.js';
 import {oldDataDirHits, type OldDataDirHits} from './data-dir.js';
@@ -44,7 +49,13 @@ export interface DoctorOptions {
 export interface DoctorReport {
 	pinned: string;
 	target: string;
-	library?: {path: string; source: LibrarySource; version?: string};
+	library?: {
+		path: string;
+		source: LibrarySource;
+		/** The platform package's name and version, when `source` is `platform package`. */
+		package?: PlatformPackage;
+		version?: string;
+	};
 	impersonating: boolean;
 	/** Why impersonation is not active. */
 	problem?: string;
@@ -134,14 +145,24 @@ const SOURCE: Record<LibrarySource, string> = {
 	'data directory': 'the data directory (searchcast install-libcurl)',
 	'old data directory':
 		"serpcast's old data directory (read for one release: move it to searchcast's, see below)",
+	'platform package': 'the platform package',
 };
+
+/** The `from:` line: which setting or place named the library. */
+function source(library: NonNullable<DoctorReport['library']>): string {
+	if (library.source === 'platform package' && library.package) {
+		const {name, version} = library.package;
+		return `the platform package ${name} ${version} (installed with searchcast)`;
+	}
+	return SOURCE[library.source];
+}
 
 /** The report as `name: value` lines. */
 export function formatReport(report: DoctorReport, proxy?: string): string {
 	const lines: [string, string][] = [];
 	const {library, oldDataDir: old} = report;
 	lines.push(['library', library ? library.path : 'not found']);
-	if (library) lines.push(['from', SOURCE[library.source]]);
+	if (library) lines.push(['from', source(library)]);
 	if (library?.version) lines.push(['version', library.version]);
 	lines.push(['pinned', report.pinned]);
 	lines.push([

@@ -1,0 +1,42 @@
+{
+	"name": "@searchcast/libcurl-linux-x64",
+	"version": "0.0.0",
+	"description": "The pinned libcurl-impersonate shared library for Linux x64 (glibc), installed automatically with searchcast. Contains only the library and its license notices.",
+	"license": "MIT AND curl AND Apache-2.0 AND BSD-3-Clause AND Zlib AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND Unicode-DFS-2016",
+	"keywords": [
+		"searchcast",
+		"libcurl-impersonate",
+		"libcurl",
+		"native"
+	],
+	"author": "wighawag",
+	"homepage": "https://github.com/wighawag/searchcast/tree/main/packages/libcurl-linux-x64#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wighawag/searchcast.git",
+		"directory": "packages/libcurl-linux-x64"
+	},
+	"bugs": {
+		"url": "https://github.com/wighawag/searchcast/issues"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"x64"
+	],
+	"libc": [
+		"glibc"
+	],
+	"files": [
+		"libcurl-impersonate.so",
+		"LICENSE",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"prepack": "node ../../scripts/libcurl-packages.mjs check"
+	}
+}

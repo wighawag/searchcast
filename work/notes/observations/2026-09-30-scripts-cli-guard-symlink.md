@@ -1,0 +1,3 @@
+# Root scripts skip their CLI when run through a symlink (2026-09-30)
+
+Noticed while building `libcurl-platform-packages`: `scripts/pack-check.mjs`, `scripts/no-skips.mjs`, `scripts/release-plan.mjs` and `scripts/copy-publish-assets.mjs` decide whether to run their CLI with `resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))`. Node reports `import.meta.url` as the real path, so invoked through a symlinked path the comparison is false and the script exits 0 having done nothing, which for a guard reads as "passed". Harmless in this repo's current invocations (no symlinks), but `scripts/libcurl-packages.mjs` compares realpaths instead; the others could do the same.

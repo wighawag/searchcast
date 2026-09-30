@@ -13,6 +13,7 @@ import {join, resolve} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {
 	checkAll,
+	LIBCURL_LICENSE,
 	packProblems,
 	unlistedPackages,
 	// @ts-expect-error - plain .mjs script, no types
@@ -21,6 +22,10 @@ import {
 const repo = resolve(import.meta.dirname, '..', '..', '..');
 const MIT = readFileSync(join(repo, 'packages', 'recipe', 'LICENSE'), 'utf8');
 const AGPL = readFileSync(join(repo, 'LICENSE'), 'utf8');
+const NOTICES = readFileSync(
+	join(repo, 'packages', 'libcurl-darwin-x64', 'LICENSE'),
+	'utf8',
+);
 
 let dirs: string[] = [];
 afterEach(() => {
@@ -203,6 +208,85 @@ describe('pack check', () => {
 		);
 		expect(ok).toBe(false);
 	}, 60_000);
+
+	it('takes a platform package with or without its library, and requires it with requirePayloads', () => {
+		const platform = entry('libcurl-x', {
+			license: LIBCURL_LICENSE,
+			allow: [],
+			payload: 'libcurl-impersonate.so',
+		});
+		const base = {
+			entry: platform,
+			manifest: manifest('libcurl-x', {license: LIBCURL_LICENSE}),
+			licenseText: NOTICES,
+		};
+		const without = ['CHANGELOG.md', 'LICENSE', 'README.md', 'package.json'];
+		const withLibrary = [...without, 'libcurl-impersonate.so'];
+		expect(packProblems({...base, files: without})).toEqual([]);
+		expect(packProblems({...base, files: withLibrary})).toEqual([]);
+		expect(
+			packProblems({...base, files: without, requirePayloads: true}),
+		).toEqual(['libcurl-impersonate.so is not in the tarball']);
+		expect(
+			packProblems({...base, files: withLibrary, requirePayloads: true}),
+		).toEqual([]);
+		expect(
+			packProblems({...base, files: [...withLibrary, 'libcurl-impersonate.a']}),
+		).toEqual(['unexpected file in the tarball: libcurl-impersonate.a']);
+		expect(packProblems({...base, files: without, licenseText: MIT})).toEqual([
+			`LICENSE is not the ${LIBCURL_LICENSE} text`,
+		]);
+	});
+
+	it('packs a platform package without running its prepack, which refuses without the library', () => {
+		const root = repoWith(
+			'libcurl-x',
+			{
+				LICENSE: NOTICES,
+				'dist/index.js': null,
+				'dist/index.d.ts': null,
+			},
+			{
+				license: LIBCURL_LICENSE,
+				files: ['libcurl-impersonate.so', 'LICENSE', 'CHANGELOG.md'],
+				scripts: {prepack: 'exit 1'},
+			},
+		);
+		const platform = entry('libcurl-x', {
+			license: LIBCURL_LICENSE,
+			allow: [],
+			payload: 'libcurl-impersonate.so',
+			ignoreScripts: true,
+		});
+		expect(checkAll(root, [platform])).toEqual({
+			ok: true,
+			lines: ['pack-check: libcurl-x ok (4 files)'],
+		});
+		const required = checkAll(root, [platform], {requirePayloads: true});
+		expect(required.ok).toBe(false);
+		expect(required.lines).toContain(
+			'  libcurl-impersonate.so is not in the tarball',
+		);
+	}, 60_000);
+
+	it('fails on a script that would run on install', () => {
+		for (const script of ['preinstall', 'install', 'postinstall']) {
+			expect(
+				packProblems({
+					entry: entry('p'),
+					manifest: manifest('p', {scripts: {[script]: 'node x.js'}}),
+					files: [
+						'CHANGELOG.md',
+						'LICENSE',
+						'README.md',
+						'dist/a.js',
+						'package.json',
+					],
+					licenseText: MIT,
+				}),
+			).toEqual([`has an ${script} script (nothing may run on install)`]);
+		}
+	});
 
 	it('lists every publishable package of this repo', () => {
 		expect(unlistedPackages(repo)).toEqual([]);

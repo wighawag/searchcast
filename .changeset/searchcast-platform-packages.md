@@ -1,0 +1,5 @@
+---
+'searchcast': minor
+---
+
+`npm install searchcast` now brings libcurl-impersonate on Linux x64 and arm64 (glibc), macOS x64 and arm64 and Windows x64: the pinned library comes in the platform package `@searchcast/libcurl-<platform>`, an optional dependency pinned to the exact version this release was built with. searchcast looks for the library in the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory, serpcast's old data directory, and last in that platform package; strict mode checks it at load as before, and nothing is downloaded at install or at run time. `searchcast doctor` names it (`from: the platform package @searchcast/libcurl-linux-x64 0.1.0 (installed with searchcast)`), and the doctor report's `library` gains `package` (`{name, version}`) with the source `platform package`. `searchcast install-libcurl` stays for platforms without a package and installs that skipped optional dependencies; its messages and the not-found error say so.

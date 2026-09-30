@@ -12,3 +12,8 @@ __pycache__/
 
 # vitest JSON reports written by `pnpm test:ci` (read by scripts/no-skips.mjs)
 vitest-report.json
+
+# The platform packages' payload (the library and its build stamp), written by
+# `node scripts/libcurl-packages.mjs build` in CI; never committed.
+packages/libcurl-*/libcurl-impersonate.*
+packages/libcurl-*/.payload.json

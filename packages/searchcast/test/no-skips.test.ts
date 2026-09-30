@@ -38,7 +38,10 @@ function repoWith(reports: Record<string, object | null>): string {
 	for (const [name, r] of Object.entries(reports)) {
 		const dir = join(root, 'packages', name);
 		mkdirSync(dir, {recursive: true});
-		writeFileSync(join(dir, 'package.json'), `{"name":"${name}"}`);
+		writeFileSync(
+			join(dir, 'package.json'),
+			JSON.stringify({name, scripts: {test: 'vitest run'}}),
+		);
 		if (r) writeFileSync(join(dir, 'vitest-report.json'), JSON.stringify(r));
 	}
 	return root;
@@ -72,6 +75,22 @@ describe('no-skips check', () => {
 		expect(lines).toContain(
 			`no-skips: no test report at ${join(root, 'packages', 'b', 'vitest-report.json')}`,
 		);
+	});
+
+	it('needs no report from a package without tests (the platform packages)', () => {
+		const root = repoWith({a: report({one: 'passed'})});
+		const dir = join(root, 'packages', 'libcurl-x');
+		mkdirSync(dir);
+		writeFileSync(
+			join(dir, 'package.json'),
+			'{"name":"@searchcast/libcurl-x","scripts":{"prepack":"x"}}',
+		);
+		expect(checkReports(root)).toEqual({
+			ok: true,
+			lines: [
+				`no-skips: ${join(root, 'packages', 'a', 'vitest-report.json')}: all 1 tests ran`,
+			],
+		});
 	});
 
 	it('lets a named exception through, and only that one', () => {
