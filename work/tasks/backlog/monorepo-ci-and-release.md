@@ -18,6 +18,8 @@ Make the repo's two workflows describe and guard the monorepo as it now is.
 
 > FORWARD-NOTE (conductor, after #10): (1) In CI today two CLI cases are skipped: the Xvfb case (no Xvfb on the runner) and the SearXNG engine case (`SEARCHCAST_TEST_SEARXNG_PYTHON` unset). Make the Xvfb case run in CI (install `xvfb`). For the SearXNG case, run it if a SearXNG Python can be installed in CI at reasonable cost; otherwise keep it skipped but explicit (a named, commented exception in the workflow and in the "no silent skip" guard) and record the decision. (2) Peer-dependency hazard: once `@searchcast/browser` is 0.1.x inside `searchcast`'s peer range, a later minor of `@searchcast/browser` makes changesets plan a MAJOR for `searchcast` (the peer rule). The release-plan check must catch that; also decide whether to set changesets' `onlyUpdatePeerDependentsWhenOutOfRange` (under `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH`) and record why. See `work/notes/observations/2026-09-30-browser-library-package-decisions.md`, decisions 1 and 2.
 
+> FORWARD-NOTE (conductor, freshness check after #14): partial pack checks already exist: `packages/searchcast/test/pack.test.ts` (npm pack --dry-run --json --ignore-scripts; asserts the SearXNG file path), `packages/recipe/test/package.test.ts` and `packages/browser/test/package.test.ts` (manifest shape). Build the repo-wide pack check on the same technique and fold or reference these rather than adding a third style. `@searchcast/browser` now also exports `browserCommand` from `./cli`.
+
 ## Acceptance criteria
 
 - [ ] CI runs every suite (no suite silently skipped in CI: the job fails if the native or browser tests would be skipped, for example by requiring their env there).
