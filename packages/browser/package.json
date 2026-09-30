@@ -1,6 +1,6 @@
 {
 	"name": "@searchcast/browser",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "The real-browser runner of searchcast, as a library: turn a web search form into a JSON API by driving a real browser, with sites described by small JSON recipes.",
 	"license": "AGPL-3.0-only",
 	"keywords": [

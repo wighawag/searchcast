@@ -1,5 +1,11 @@
 # @searchcast/recipe
 
+## 0.1.0
+
+### Minor Changes
+
+- 691d8e2: First release under the new name `@searchcast/recipe`; identical to `serpcast-recipe` 0.2.0 (same format, same API, same error messages).
+
 The entries below were released as `serpcast-recipe` (from the [serpcast](https://github.com/wighawag/serpcast) repo), before the package was renamed `@searchcast/recipe` (ADR 0005).
 
 ## 0.2.0
