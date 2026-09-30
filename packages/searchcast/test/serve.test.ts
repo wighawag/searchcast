@@ -238,7 +238,11 @@ describe.skipIf(!chrome)('the CLI', () => {
 		expect(status, JSON.stringify(body)).toBe(200);
 		expect(body.results[0].title).toBe('options first result 1');
 		expect(await exitCode(child, 15_000)).toBe(0);
-		expect(readdirSync(tmp)).toEqual([]);
+		// Only our profile must be gone: Chrome itself may leave its own entries
+		// (e.g. com.google.Chrome.chrome_chrome_url_fetcher_*) in TMPDIR.
+		expect(
+			readdirSync(tmp).filter((f) => f.startsWith('searchcast-profile-')),
+		).toEqual([]);
 	}, 60_000);
 
 	// The regression that took searchcast down in a Tor-forced account: it used
