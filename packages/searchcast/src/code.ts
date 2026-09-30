@@ -20,12 +20,18 @@
 // - `http.post` is a page's `fetch()` POST (and the CORS preflight Chrome
 //   would send first, see transport.ts); it returns the raw response, and
 //   `http.postJson` sends a value as JSON and parses the answer like `json`.
+// - A `fetch` request (GET or POST) may carry author headers
+//   (`{kind: 'fetch', headers: {'API-Key': key}}`), as a page's script adds
+//   them: only the measured name sets, placed and preflighted as Chrome does
+//   (author-headers.ts); they are checked here, before any request, and passed
+//   on lowercased.
 // Decisions and alternatives: work/notes/observations/code-recipes-decisions.md,
 // and for `ctx.cookies` work/notes/observations/2026-09-29-recipe-set-cookie-decisions.md.
 
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
+import {authorHeaders} from './author-headers.js';
 import {REQUEST_KINDS} from './chrome.js';
 import type {DocumentCookies} from './cookies.js';
 import type {SearchResult} from './declarative.js';
@@ -241,6 +247,21 @@ function http(
 	session: Pick<TransportSession, 'request'>,
 	signal: AbortSignal,
 ): CodeRecipeHttp {
+	/** `options` with its author headers checked (a `recipe` error naming the recipe) and lowercased. */
+	const checked = <O extends {kind?: unknown; headers?: unknown}>(
+		options: O,
+	): O => {
+		let pairs;
+		try {
+			pairs = authorHeaders(options.kind as never, options.headers);
+		} catch (error) {
+			if (error instanceof SearchcastError)
+				throw new SearchcastError('recipe', `${name}: ${error.message}`);
+			throw error;
+		}
+		const {headers: _, ...rest} = options;
+		return (pairs ? {...rest, headers: Object.fromEntries(pairs)} : rest) as O;
+	};
 	const get = async (url: string, options: HttpOptions) => {
 		if (!REQUEST_KINDS.includes(options?.kind)) {
 			throw new SearchcastError(
@@ -250,7 +271,7 @@ function http(
 		}
 		// `method` is forced: a GET stays a GET whatever a JS caller passes.
 		return session.request(url, {
-			...options,
+			...checked(options),
 			method: 'GET',
 			signal,
 		} as RequestOptions);
@@ -262,7 +283,11 @@ function http(
 				`${name}: a POST must be a fetch request (kind: 'fetch')`,
 			);
 		}
-		return session.request(url, {...options, method: 'POST', signal});
+		return session.request(url, {
+			...checked(options),
+			method: 'POST',
+			signal,
+		});
 	};
 	const parse = async (url: string, response: TransportResponse) => {
 		checkStatus(name, response);

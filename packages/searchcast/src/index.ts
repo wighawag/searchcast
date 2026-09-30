@@ -42,6 +42,7 @@ export {
 	type RequestKind,
 	type RequestMethod,
 } from './chrome.js';
+export {AUTHOR_HEADER_SETS, type AuthorHeaders} from './author-headers.js';
 export {
 	runDeclarativeRecipe,
 	type RecipeResponse,

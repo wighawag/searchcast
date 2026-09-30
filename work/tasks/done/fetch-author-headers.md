@@ -3,7 +3,7 @@ title: Code recipes can add their own headers to a fetch request, placed and pre
 slug: fetch-author-headers
 blockedBy: [example-mwmbl-recipe]
 covers: []
-needsAnswers: true
+needsAnswers: false
 ---
 
 ## What to build

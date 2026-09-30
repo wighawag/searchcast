@@ -440,6 +440,107 @@ describe('code recipes: ctx.http.post and postJson', () => {
 	});
 });
 
+describe('code recipes: author headers on a fetch request', () => {
+	it('get, json and post pass them on lowercased (the transport places and preflights them)', async () => {
+		const recipe = code('api', async (_, ctx) => {
+			const options = {
+				kind: 'fetch',
+				referer: 'https://api.test/',
+				headers: {'API-Key': 'k1'},
+			} as const;
+			await ctx.http.json('https://api.test/get', options);
+			await ctx.http.postJson(
+				'https://api.test/post',
+				{a: 1},
+				{
+					...options,
+					headers: {Authorization: 'Bearer t'},
+				},
+			);
+			await ctx.http.get('https://api.test/none', {
+				kind: 'fetch',
+				referer: 'https://api.test/',
+				headers: {},
+			});
+			return [];
+		});
+		const {searchcast, requests} = setup({api: () => json({})});
+		await searchcast.search('q', {engines: [recipe]});
+		expect(requests.map((r) => r.headers)).toEqual([
+			{'api-key': 'k1'},
+			{authorization: 'Bearer t'},
+			undefined,
+		]);
+	});
+
+	it.each([
+		[
+			'a forbidden name',
+			{kind: 'fetch', headers: {Cookie: 'a=1'}},
+			/header Cookie: a page's script cannot set it/,
+		],
+		[
+			'a name the table sends',
+			{kind: 'fetch', headers: {'User-Agent': 'x'}},
+			/header User-Agent: the header table sends it/,
+		],
+		[
+			'an unmeasured set',
+			{kind: 'fetch', headers: {'X-Key': 'x'}},
+			/\{x-key\} are not supported/,
+		],
+		[
+			'a CR/LF in a value',
+			{kind: 'fetch', headers: {'API-Key': 'a\r\nX: y'}},
+			/header API-Key: the value must be/,
+		],
+		[
+			'headers on a document request',
+			{kind: 'document', headers: {'API-Key': 'k'}},
+			/only for a fetch request/,
+		],
+		[
+			'headers on a script request',
+			{kind: 'script', headers: {'API-Key': 'k'}},
+			/only for a fetch request/,
+		],
+	])(
+		'%s is a recipe error naming the recipe, before any request',
+		async (_, options, message) => {
+			const recipe = code('api', async (_, ctx) => {
+				await ctx.http.get('https://api.test/', {
+					referer: 'https://api.test/',
+					...options,
+				} as never);
+				return [];
+			});
+			const {searchcast, requests} = setup({api: () => json([])});
+			const error = await onlyFailure(searchcast, recipe);
+			expect(error.kind).toBe('recipe');
+			expect(error.message).toMatch(/^api: /);
+			expect(error.message).toMatch(message);
+			expect(requests).toEqual([]);
+		},
+	);
+
+	it('a POST with a forbidden name is refused too', async () => {
+		const recipe = code('api', async (_, ctx) => {
+			await ctx.http.post('https://api.test/', {
+				kind: 'fetch',
+				referer: 'https://api.test/',
+				headers: {'Sec-Fetch-Site': 'none'},
+			});
+			return [];
+		});
+		const {searchcast, requests} = setup({api: () => json([])});
+		const error = await onlyFailure(searchcast, recipe);
+		expect(error.message).toMatch(
+			/header Sec-Fetch-Site: a page's script cannot set it/,
+		);
+		expect(requests).toEqual([]);
+	});
+});
+
 describe('code recipes: ctx.session', () => {
 	const counter = code('count', (_, ctx) => {
 		const n = ((ctx.session.get('n') as number | undefined) ?? 0) + 1;

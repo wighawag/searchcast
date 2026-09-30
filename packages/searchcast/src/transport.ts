@@ -32,17 +32,24 @@
 // callbacks while exit waited for the worker.
 //
 // POST: only for the `fetch` kind, sent as Chrome's `fetch()` POST (header
-// table in chrome.ts). When Chrome would send a CORS preflight first (another
-// origin, a `content-type` that is not CORS-safelisted), the session sends it
-// too, as Chrome does: without cookies, on a connection of its own (Chrome
-// keeps credential-less requests off the credentialed connection), and
-// remembers a successful one for its `access-control-max-age` (default 5 s,
-// at most `maxPreflightAgeS`) per page origin and URL, unless
-// `preflightCache: false` (then every such POST is preflighted). A preflight the server does not allow stops the
-// POST, as in the browser. Decisions:
-// work/notes/observations/2026-09-29-post-requests-decisions.md.
+// table in chrome.ts). Author headers (`headers`): only for the `fetch` kind,
+// only the measured name sets, placed as Chrome places them (author-headers.ts).
+// When Chrome would send a CORS preflight first (another origin, and an
+// author header or a POST `content-type` that is not CORS-safelisted), the
+// session sends it too, as Chrome does: without cookies, on a connection of
+// its own (Chrome keeps credential-less requests off the credentialed
+// connection), and remembers a successful one for its `access-control-max-age`
+// (default 5 s, at most `maxPreflightAgeS`) per page origin and URL, with the
+// header names it allowed: a later request is not preflighted while that
+// entry lasts and allows every name it asks for, else it is preflighted again
+// and the new answer replaces the entry (measured). `preflightCache: false`
+// preflights every such request. A preflight the server does not allow stops
+// the request, as in the browser. Decisions:
+// work/notes/observations/2026-09-29-post-requests-decisions.md and
+// 2026-09-30-fetch-author-headers-decisions.md.
 
 import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
+import type {AuthorHeaders} from './author-headers.js';
 import {
 	headerTable,
 	IMPERSONATE_TARGET,
@@ -102,7 +109,7 @@ export interface TransportOptions {
 	idlePollMs?: number;
 	/** Largest POST body, in bytes. Default `MAX_REQUEST_BODY_BYTES` (1 MiB). */
 	maxRequestBodyBytes?: number;
-	/** Remember an allowed CORS preflight for its `access-control-max-age`. Default true; false preflights every such POST. */
+	/** Remember an allowed CORS preflight for its `access-control-max-age`. Default true; false preflights every such request. */
 	preflightCache?: boolean;
 	/** The longest a preflight is remembered, in seconds. Default 7200 (Chromium's cap). */
 	maxPreflightAgeS?: number;
@@ -131,6 +138,11 @@ export function checkTransportOptions(options: TransportOptions): void {
  * URL relative to it; `fetchSite` overrides that for a caller who knows
  * better (the built-in site rule does not know private suffixes such as
  * `github.io`, see `registrableDomain`).
+ *
+ * `headers` (`fetch` only) are author headers, as a page's script adds them
+ * to its `fetch()`: only the measured name sets (`{api-key}`,
+ * `{authorization}`), placed and preflighted as Chrome does; anything else is
+ * a `recipe` error before any request (see `authorHeaders`).
  */
 export type RequestOptions = {signal?: AbortSignal; timeoutMs?: number} & (
 	| {
@@ -138,18 +150,28 @@ export type RequestOptions = {signal?: AbortSignal; timeoutMs?: number} & (
 			referer?: undefined;
 			fetchSite?: undefined;
 			method?: 'GET';
+			headers?: undefined;
 	  }
 	| {
 			kind: 'same-origin-navigation';
 			referer: string;
 			fetchSite?: undefined;
 			method?: 'GET';
+			headers?: undefined;
 	  }
 	| {
-			kind: 'fetch' | 'script';
+			kind: 'fetch';
 			referer: string;
 			fetchSite?: FetchSite;
 			method?: 'GET';
+			headers?: AuthorHeaders;
+	  }
+	| {
+			kind: 'script';
+			referer: string;
+			fetchSite?: FetchSite;
+			method?: 'GET';
+			headers?: undefined;
 	  }
 	| PostOptions
 );
@@ -276,8 +298,11 @@ export function createTransport(options: TransportOptions = {}): Transport {
 			// Credential-less requests (CORS preflights) use their own
 			// connections, as Chrome's do.
 			let anonymous: Connections | undefined;
-			/** Allowed preflights: `<page origin> <url>` to expiry (ms). */
-			const preflights = new Map<string, number>();
+			/** Allowed preflights: `<page origin> <url>` to expiry (ms) and the header names allowed. */
+			const preflights = new Map<
+				string,
+				{expires: number; headers: Set<string>}
+			>();
 			return {
 				cookies: () => jar.list(),
 				clearCookies: () => jar.clear(),
@@ -296,6 +321,7 @@ export function createTransport(options: TransportOptions = {}): Transport {
 						referer: request.referer,
 						url: target,
 						fetchSite: request.fetchSite,
+						headers: request.headers,
 						cookie: jar.header(target),
 						...(post && {
 							method: 'POST',
@@ -304,19 +330,31 @@ export function createTransport(options: TransportOptions = {}): Transport {
 						}),
 					});
 					const preflight =
-						post &&
-						preflightTable({
-							referer: request.referer!,
-							url: target,
-							fetchSite: request.fetchSite,
-							contentType: post.contentType,
-						});
+						request.kind === 'fetch'
+							? preflightTable({
+									referer: request.referer,
+									url: target,
+									fetchSite: request.fetchSite,
+									headers: request.headers,
+									...(post
+										? {method: 'POST', contentType: post.contentType}
+										: {method: 'GET'}),
+								})
+							: undefined;
 					request.signal?.throwIfAborted();
 					const {curl, info} = await check();
 					if (preflight) {
 						const origin = new URL(request.referer!).origin;
 						const key = `${origin} ${target.href}`;
-						if (!((preflights.get(key) ?? 0) > Date.now())) {
+						const names = new Map(preflight)
+							.get('access-control-request-headers')!
+							.split(',');
+						const cached = preflights.get(key);
+						if (!(
+							cached &&
+							cached.expires > Date.now() &&
+							names.every((name) => cached.headers.has(name))
+						)) {
 							preflights.delete(key);
 							const [set, done] = connect(curl, anonymous);
 							if (!done) anonymous = set;
@@ -335,9 +373,13 @@ export function createTransport(options: TransportOptions = {}): Transport {
 							} finally {
 								done?.();
 							}
-							const age = checkPreflight(answer, origin, maxAgeS);
-							if (age > 0 && cachePreflights)
-								preflights.set(key, Date.now() + age * 1000);
+							const allowed = checkPreflight(answer, origin, names, maxAgeS);
+							if (allowed.maxAgeS > 0 && cachePreflights) {
+								preflights.set(key, {
+									expires: Date.now() + allowed.maxAgeS * 1000,
+									headers: allowed.allowedHeaders,
+								});
+							}
 						}
 					}
 					const [set, done] = connect(curl, connections);
