@@ -1,5 +1,11 @@
 # searchcast
 
+## 0.3.0
+
+### Minor Changes
+
+- 7015848: A code recipe can add an author header to a `fetch` request, as a page's script adds one to its `fetch()`: `ctx.http.get/text/json/post/postJson(url, {kind: 'fetch', referer, headers: {'API-Key': key}})`, and `headers` on the transport's `session.request`. Only the name sets whose place in Chrome's header order was measured are supported, `{api-key}` and `{authorization}` (exported as `AUTHOR_HEADER_SETS`): Chrome orders author headers by a hash over the whole name set, so any other set, two headers together included, is a `recipe` error naming the supported sets. The header goes where Chrome puts it (right after `sec-ch-ua-platform`, lowercased), and a request to another origin that carries one is preflighted, GET as well as POST, with `access-control-request-headers` lowercased, sorted and comma-joined; a preflight that does not allow every name stops the request (`recipe`). The preflight cache now remembers the header names an answer allowed and is replaced by each new preflight, as Chrome's is. Forbidden request headers, `sec-*` and `proxy-*` names, names the header table sends itself, bad values (CR/LF included) and `headers` on a `document`, `same-origin-navigation` or `script` request are refused with a `recipe` error before anything is sent. `headerTable` and `preflightTable` take `headers` (and `preflightTable` a `method`); the preflight refusal message now says "does not allow the request" instead of "the POST". The Marginalia example calls the current API with an `API-Key` header when `MARGINALIA_API_KEY` is set.
+
 ## 0.2.0
 
 ### Minor Changes
@@ -19,6 +25,7 @@
 - a2dd040: `searchcast serve` and `searchcast browser-query` are back on the `searchcast` bin, with searchcast 0.1.x's flags, defaults, messages and exit codes (`--listen host:port|/path.sock|systemd`, `--idle-exit`, `--xvfb`, `--ephemeral`, `--profile`, `--proxy`, `--headless`, `--concurrency`, `--chrome-arg=`). They run the browser runner from `@searchcast/browser`, the optional peer dependency, so after upgrading from searchcast 0.1.x install it next to `searchcast` (`npm install -g searchcast @searchcast/browser`) and existing systemd units work unchanged; without it, both commands exit with code 1 and one line naming the package and the install command. `browser-query` is 0.1.x's browser `searchcast query` (`searchcast query` is now the HTTP query). Neither command loads koffi or libcurl-impersonate. `searchcast --help` lists both.
 
   The SearXNG engine ships in the `searchcast` package again, at the same path as in 0.1.x: `integrations/searxng/searchcast.py`.
+
 - 7e95404: `npm install searchcast` now brings libcurl-impersonate on Linux x64 and arm64 (glibc), macOS x64 and arm64 and Windows x64: the pinned library comes in the platform package `@searchcast/libcurl-<platform>`, an optional dependency pinned to the exact version this release was built with. searchcast looks for the library in the `libcurlPath` option, `SEARCHCAST_LIBCURL_PATH`, `SERPCAST_LIBCURL_PATH`, `LIBCURL_PATH`, the data directory, serpcast's old data directory, and last in that platform package; strict mode checks it at load as before, and nothing is downloaded at install or at run time. `searchcast doctor` names it (`from: the platform package @searchcast/libcurl-linux-x64 0.1.0 (installed with searchcast)`), and the doctor report's `library` gains `package` (`{name, version}`) with the source `platform package`. `searchcast install-libcurl` stays for platforms without a package and installs that skipped optional dependencies; its messages and the not-found error say so.
 - 0687410: The published `searchcast` package now includes its `CHANGELOG.md`, like `@searchcast/browser` and `@searchcast/recipe`.
 
