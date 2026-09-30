@@ -3,7 +3,7 @@
 // per-engine handler, keeps cookies with the real CookieStore, and records
 // every request. No network, no native library.
 
-import {parseRecipe, type Recipe} from 'serpcast-recipe';
+import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import {
 	CookieStore,
 	documentCookies,

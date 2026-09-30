@@ -6,7 +6,7 @@
 // Ported from webveil's script of the same name.
 //
 // Only `packages/serpcast` uses it: the root README describes serpcast, and
-// the root LICENSE is serpcast's AGPL. `serpcast-recipe` keeps its own README
+// the root LICENSE is serpcast's AGPL. `@searchcast/recipe` keeps its own README
 // and its own MIT LICENSE and must NOT be wired to this script.
 //
 // Safety: every write stays inside the repo. The destination must resolve to a

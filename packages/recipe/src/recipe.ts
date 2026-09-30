@@ -1,14 +1,15 @@
-// The recipe schema, its types and its validator, shared by serpcast (HTTP)
-// and searchcast (real browser). This is an exact extraction of searchcast's
-// `src/recipe.ts` (searchcast@0.1.1): same types, same validation, same
-// messages, so every recipe searchcast accepts is accepted unchanged (ADR
-// 0003). Keep it that way: searchcast re-exports this module, so any change in
-// meaning or wording here is a change to searchcast too. This file must not
+// The recipe schema, its types and its validator, shared by searchcast (HTTP)
+// and @searchcast/browser (real browser). This is an exact extraction of the
+// browser runner's `src/recipe.ts` (searchcast@0.1.1, now @searchcast/browser):
+// same types, same validation, same messages, so every recipe the browser
+// runner accepts is accepted unchanged (ADR 0003). Keep it that way:
+// @searchcast/browser re-exports this module, so any change in meaning or
+// wording here is a change to @searchcast/browser too. This file must not
 // import anything from `node:*`; the file loaders live in `./node.ts`.
 //
 // One addition since the extraction: the optional `decoyProne` boolean. It is
-// validated and kept in `parseRecipe`'s output; serpcast's engine chain reads
-// it, searchcast ignores it (it has no chain). A recipe without it is parsed
+// validated and kept in `parseRecipe`'s output; searchcast's engine chain reads
+// it, @searchcast/browser ignores it (it has no chain). A recipe without it is parsed
 // exactly as before, with the same messages.
 
 /** How to read one value out of a result item. */
@@ -54,8 +55,9 @@ export interface Recipe {
 	timeoutMs?: number;
 	/**
 	 * The site sometimes answers with results unrelated to the query (a decoy
-	 * page). serpcast's engine chain then checks this engine's answers without
-	 * the caller naming it in `decoyGuard`; searchcast ignores it.
+	 * page). searchcast's engine chain then checks this engine's answers
+	 * without the caller naming it in `decoyGuard`; @searchcast/browser ignores
+	 * it.
 	 */
 	decoyProne?: boolean;
 }

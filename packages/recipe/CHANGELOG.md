@@ -1,4 +1,6 @@
-# serpcast-recipe
+# @searchcast/recipe
+
+The entries below were released as `serpcast-recipe` (from the [serpcast](https://github.com/wighawag/serpcast) repo), before the package was renamed `@searchcast/recipe` (ADR 0005).
 
 ## 0.2.0
 

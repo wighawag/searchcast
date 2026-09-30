@@ -6,7 +6,7 @@
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {parseRecipe, type Recipe} from 'serpcast-recipe';
+import {parseRecipe, type Recipe} from '@searchcast/recipe';
 import {afterAll, describe, expect, it} from 'vitest';
 import {
 	createSerpcast,

@@ -23,7 +23,7 @@ import {
 	DEFAULT_TIMEOUT_MS,
 	requiresBrowser,
 	type Recipe,
-} from 'serpcast-recipe';
+} from '@searchcast/recipe';
 import {untilAborted} from './code.js';
 import {SerpcastError} from './errors.js';
 import {parsePage} from './html.js';

@@ -44,7 +44,7 @@ describe('parseRecipe: decoyProne', () => {
 });
 
 describe('loadRecipeFile: decoyProne', () => {
-	const dir = mkdtempSync(join(tmpdir(), 'serpcast-recipe-decoy-'));
+	const dir = mkdtempSync(join(tmpdir(), 'searchcast-recipe-decoy-'));
 	afterAll(() => rmSync(dir, {recursive: true, force: true}));
 
 	it('reads it from a recipe file', () => {

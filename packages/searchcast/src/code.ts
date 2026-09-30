@@ -25,7 +25,7 @@
 
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {DEFAULT_TIMEOUT_MS} from 'serpcast-recipe';
+import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import {REQUEST_KINDS} from './chrome.js';
 import type {DocumentCookies} from './cookies.js';
 import type {SearchResult} from './declarative.js';
