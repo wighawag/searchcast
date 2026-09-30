@@ -11,7 +11,10 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"build": "pnpm --filter './packages/*' build",
-		"test": "pnpm --filter './packages/*' test",
-		"release:ci": "pnpm format:check && pnpm build && pnpm changeset publish"
+		"test": "pnpm check:release && pnpm --filter './packages/*' test && pnpm check:pack",
+		"test:ci": "pnpm check:release && pnpm --filter './packages/*' test --reporter=default --reporter=json --outputFile=vitest-report.json && pnpm check:pack && node scripts/no-skips.mjs",
+		"check:release": "node scripts/release-plan.mjs",
+		"check:pack": "node scripts/pack-check.mjs",
+		"release:ci": "pnpm format:check && pnpm build && pnpm check:release && pnpm check:pack && pnpm changeset publish"
 	}
 }
