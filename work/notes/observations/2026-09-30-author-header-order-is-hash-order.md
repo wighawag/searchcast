@@ -25,3 +25,5 @@ Other results from the same capture:
 - The preflight cache is per URL and covers header names: after one answer allowing `api-key, x-zeta, content-type`, later GETs with any subset and a JSON POST to the same URL were not preflighted. When the answer allowed only what was asked, a request with another name preflighted again.
 - A safelisted `content-language` was not preflighted cross-site. `range` was not preflighted either, but it switched `accept-encoding` to `identity`.
 - Page scripts CAN set `accept-language` and `priority`, which then replace the table's values. `user-agent`, `cookie`, `referer`, `sec-*`, and `x-http-method-override: TRACE` were silently dropped.
+
+Follow-up (2026-09-30): turned into the finding `work/notes/findings/fetch-author-headers.md` (with a second, allowlist run), and the task was re-scoped to a measured allowlist of name sets.

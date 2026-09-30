@@ -1,37 +1,55 @@
 // An example searchcast code recipe for Marginalia Search (https://marginalia-search.com),
 // an independent web search engine whose API is meant for programs:
-// https://about.marginalia-search.com/article/api/ (read 2026-09-29).
+// https://about.marginalia-search.com/article/api/ (read 2026-09-29; the current API
+// again 2026-09-30).
 //
 // Terms, in short: the key `public` is for experimentation and its rate limit
 // is shared by everyone who uses it (HTTP 503 when hit); ask for a free
 // personal key (non-commercial) for regular use and set it in
 // MARGINALIA_API_KEY. Results are provided under CC-BY-NC-SA 4.0.
 //
-// It uses the URL-keyed API (`api.marginalia.nu/<key>/search/<query>`), which
-// Marginalia documents as deprecated but working "as long as the project
-// does". The current API (`api2.marginalia-search.com`) takes the key in an
-// `API-Key` header, and searchcast's transport sends only Chrome's header table.
-// The key is part of the URL, so it appears in searchcast's error messages
-// (they name the URL): keep that in mind when you log failures.
+// With MARGINALIA_API_KEY set, it calls the current API
+// (`api2.marginalia-search.com/search?query=<query>`) with the key in an
+// `API-Key` header, sent as a page's script would send it: a `fetch` request
+// with an author header. The page it comes from is the API's own origin, so
+// the request is same-origin and Chrome would send no CORS preflight (the API
+// need not answer one). Without a key, it uses the URL-keyed API
+// (`api.marginalia.nu/public/search/<query>`) with the shared `public` key, as
+// before; Marginalia documents that API as deprecated but working "as long as
+// the project does". There the key is part of the URL, so it appears in
+// searchcast's error messages (they name the URL); a personal key never does,
+// since it travels in the header.
 //
 // This is an example, not an engine bundled with searchcast: load it by path,
 // or copy it next to your own recipes and adapt it.
 
-const API = 'https://api.marginalia.nu';
+const API = 'https://api2.marginalia-search.com';
+const OLD_API = 'https://api.marginalia.nu';
 
 export default {
 	name: 'marginalia',
 	async search(query, ctx) {
-		const key = process.env.MARGINALIA_API_KEY || 'public';
-		let url = `${API}/${encodeURIComponent(key)}/search/${encodeURIComponent(query)}`;
-		if (ctx.maxResults !== undefined) {
-			// The API takes 1 to 100 results.
-			const count = Math.min(100, Math.max(1, Math.floor(ctx.maxResults)));
-			url += `?count=${count}`;
-		}
+		const key = process.env.MARGINALIA_API_KEY;
+		// Both APIs take 1 to 100 results.
+		const count =
+			ctx.maxResults === undefined
+				? undefined
+				: Math.min(100, Math.max(1, Math.floor(ctx.maxResults)));
 		let data;
 		try {
-			data = await ctx.http.json(url, {kind: 'document'});
+			if (key) {
+				let url = `${API}/search?query=${encodeURIComponent(query)}`;
+				if (count !== undefined) url += `&count=${count}`;
+				data = await ctx.http.json(url, {
+					kind: 'fetch',
+					referer: `${API}/`,
+					headers: {'API-Key': key},
+				});
+			} else {
+				let url = `${OLD_API}/public/search/${encodeURIComponent(query)}`;
+				if (count !== undefined) url += `?count=${count}`;
+				data = await ctx.http.json(url, {kind: 'document'});
+			}
 		} catch (error) {
 			// ctx.http maps 429 to `blocked` already; a 503 (a `transport` error
 			// there) is how this API reports its rate limit, so it is `blocked` too

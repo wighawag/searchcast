@@ -45,15 +45,19 @@ The one explicit Chrome version libcurl-impersonate reproduces at the TLS/HTTP2 
 _Avoid_: profile, browser alias
 
 **Header table**:
-The exact request headers (names, values, order) that the pinned Chrome sends for one request kind. The only headers searchcast sends; the library's own defaults are off.
+The exact request headers (names, values, order) that the pinned Chrome sends for one request kind. The only headers searchcast sends, besides a code recipe's author headers (placed within it where Chrome places them); the library's own defaults are off.
 _Avoid_: default headers, user agent
 
 **Request kind**:
 What a request is, from the browser's point of view, which selects its header table: document navigation, same-origin navigation, fetch/XHR, or script. Only a fetch may be a POST.
 _Avoid_: request type, mode
 
+**Author header**:
+A header a page's script adds to its own `fetch()` (`fetch(url, {headers: {'API-Key': key}})`), as opposed to the header table's. A code recipe may add one to a fetch request (`headers`), GET or POST, and nothing a script could not: only the name sets whose place in Chrome's order was measured (`{api-key}`, `{authorization}`; Chrome orders them by a hash over the whole name set), never a forbidden name or one the table sends. It can cause a preflight.
+_Avoid_: custom header, extra header, request header (too broad)
+
 **Preflight**:
-The CORS `OPTIONS` request Chrome sends before a fetch POST to another origin whose `content-type` is not CORS-safelisted (such as `application/json`). searchcast sends it too, as captured: credential-less, on the transport session's credential-less connections, remembered for its `access-control-max-age` (capped by `maxPreflightAgeS`; not at all with `preflightCache: false`). If it does not allow the POST, the POST is not sent.
+The CORS `OPTIONS` request Chrome sends before a fetch to another origin that carries a header that is not CORS-safelisted: an author header (GET or POST), or a POST `content-type` such as `application/json`. searchcast sends it too, as captured: credential-less, on the transport session's credential-less connections, remembered per page origin and URL, with the header names its answer allowed, for its `access-control-max-age` (capped by `maxPreflightAgeS`; not at all with `preflightCache: false`). If it does not allow the request, the request is not sent.
 _Avoid_: OPTIONS check, CORS probe
 
 **Fetch site**:

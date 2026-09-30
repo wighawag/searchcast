@@ -35,6 +35,8 @@ export interface FakeRequest {
 	/** The request kind (selects the header table) and its referer. */
 	kind: RequestOptions['kind'];
 	referer?: string;
+	/** Author headers, as the transport got them (`fetch` only). */
+	headers?: Record<string, string>;
 	/** Only for a POST: the method, its body (as text) and content type. */
 	method?: 'POST';
 	body?: string;
@@ -96,6 +98,7 @@ export function fakeTransport(
 						cookie: jar.header(target),
 						kind: options.kind,
 						...(options.referer && {referer: options.referer}),
+						...(options.headers && {headers: options.headers}),
 						...(options.method === 'POST' && {
 							method: 'POST' as const,
 							body:

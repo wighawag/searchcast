@@ -8,10 +8,18 @@
 // structure), with branded Chrome values on Linux. Same-site and cross-site
 // `fetch` and `script`: work/notes/findings/sec-fetch-site-by-initiator.md
 // (2026-09-29). POST `fetch` and its CORS preflight:
-// work/notes/findings/post-requests.md (2026-09-29). Not measured, so not
-// offered: navigations to another origin, navigation (form) POST,
-// non-English `accept-language`.
+// work/notes/findings/post-requests.md (2026-09-29). Author headers on a
+// `fetch` (placement, and the preflight they cause):
+// work/notes/findings/fetch-author-headers.md (2026-09-30), rules in
+// author-headers.ts. Not measured, so not offered: navigations to another
+// origin, navigation (form) POST, non-English `accept-language`, author-header
+// name sets other than the measured ones.
 
+import {
+	authorHeaders,
+	authorHeaderSlot,
+	type AuthorHeaders,
+} from './author-headers.js';
 import {SearchcastError} from './errors.js';
 
 /** The pinned Chrome major version. */
@@ -201,30 +209,48 @@ function siteOf(
 }
 
 /**
- * The CORS preflight (`OPTIONS`) Chrome sends before a `fetch` POST, or
- * `undefined` when it sends none: only a request that is not same-origin
- * and whose `content-type` is not CORS-safelisted (`isSafelistedContentType`)
- * is preflighted, since searchcast sends no other author header. Chrome sends
- * it without credentials (no cookie, no `sec-fetch-storage-access`, and on a
- * connection of its own), with no client hints, and asks only for
- * `content-type`. Source: work/notes/findings/post-requests.md.
+ * The CORS preflight (`OPTIONS`) Chrome sends before a `fetch` request, or
+ * `undefined` when it sends none: only a request that is not same-origin and
+ * carries a header that is not CORS-safelisted is preflighted, that is an
+ * author header (every supported one is non-safelisted: `api-key`,
+ * `authorization`) or, on a POST, a `content-type` that is not
+ * (`isSafelistedContentType`). GET and POST are safelisted methods, so the
+ * method alone never causes one. Chrome sends it without credentials (no
+ * cookie, no `sec-fetch-storage-access`, and on a connection of its own),
+ * with no client hints, `access-control-request-method` the request's method
+ * and `access-control-request-headers` the non-safelisted header names,
+ * lowercased, sorted and comma-joined without spaces (`api-key,content-type`).
+ * `method` defaults to POST when `contentType` is given, else GET. Sources:
+ * work/notes/findings/post-requests.md and fetch-author-headers.md.
  */
 export function preflightTable(context: {
 	referer: string;
 	url?: string | URL;
 	fetchSite?: FetchSite;
+	method?: RequestMethod;
 	contentType?: string;
+	/** Author headers (see `authorHeaders`); checked here too. */
+	headers?: AuthorHeaders;
 }): HeaderTable | undefined {
 	const {contentType} = context;
-	if (contentType === undefined || isSafelistedContentType(contentType))
-		return undefined;
+	const method = context.method ?? (contentType === undefined ? 'GET' : 'POST');
+	const names = (authorHeaders('fetch', context.headers) ?? []).map(
+		([name]) => name,
+	);
+	if (
+		method === 'POST' &&
+		contentType !== undefined &&
+		!isSafelistedContentType(contentType)
+	)
+		names.push('content-type');
+	if (names.length === 0) return undefined;
 	const site = siteOf('fetch', context);
 	if (site === 'same-origin') return undefined;
 	const origin = pageUrl('fetch', context.referer).origin;
 	return [
 		['accept', '*/*'],
-		['access-control-request-method', 'POST'],
-		['access-control-request-headers', 'content-type'],
+		['access-control-request-method', method],
+		['access-control-request-headers', names.sort().join(',')],
 		['origin', origin],
 		['user-agent', UA],
 		['sec-fetch-mode', 'cors'],
@@ -255,6 +281,11 @@ export function preflightTable(context: {
  * body, credentials: 'include'})`: `content-length` first, `content-type`
  * (when there is one) between `sec-ch-ua` and `sec-ch-ua-mobile`, and
  * `origin` ALWAYS, same-origin included (work/notes/findings/post-requests.md).
+ *
+ * `headers` (`fetch` only) are the request's author headers, checked and
+ * placed as Chrome places them by `authorHeaders` (author-headers.ts): each
+ * supported set right after `sec-ch-ua-platform`, lowercased
+ * (work/notes/findings/fetch-author-headers.md).
  */
 export function headerTable(
 	kind: RequestKind,
@@ -271,10 +302,13 @@ export function headerTable(
 		contentType?: string;
 		/** A POST's body length in bytes. Default 0. */
 		contentLength?: number;
+		/** Author headers (`fetch` only; see `authorHeaders`). */
+		headers?: AuthorHeaders;
 	},
 ): HeaderTable {
 	const {referer, cookie} = context;
 	const post = context.method === 'POST';
+	const author = authorHeaders(kind, context.headers);
 	if (post && kind !== 'fetch') {
 		throw new SearchcastError(
 			'recipe',
@@ -324,7 +358,7 @@ export function headerTable(
 	const site = siteOf(kind, {...context, referer: referer!});
 	const origin = site === 'same-origin' ? '' : pageUrl(kind, referer!).origin;
 	const contentType = context.contentType;
-	return [
+	const table: HeaderTable = [
 		...(post
 			? [
 					['content-length', String(context.contentLength ?? 0)] as [
@@ -358,4 +392,9 @@ export function headerTable(
 		['referer', origin ? `${origin}/` : referer!],
 		...tail(kind === 'fetch' ? 'u=1, i' : undefined),
 	];
+	if (author) {
+		const slot = authorHeaderSlot(author);
+		table.splice(table.findIndex(([name]) => name === slot) + 1, 0, ...author);
+	}
+	return table;
 }

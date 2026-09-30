@@ -1,6 +1,8 @@
 // The example recipe examples/recipes/marginalia.mjs (outside the packages,
-// not published) run in the engine chain against a fake of Marginalia's
-// URL-keyed API (test/engines.ts). No test contacts the real API.
+// not published) run in the engine chain against fakes of Marginalia's two
+// APIs (test/engines.ts): the URL-keyed one without a key, the current one
+// (key in an `API-Key` author header) with MARGINALIA_API_KEY. No test
+// contacts the real API.
 
 import {fileURLToPath} from 'node:url';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
@@ -21,6 +23,7 @@ const path = fileURLToPath(
 	new URL('../../../examples/recipes/marginalia.mjs', import.meta.url),
 );
 const HOST = 'api.marginalia.nu';
+const API2 = 'api2.marginalia-search.com';
 
 const json = (value: unknown, status = 200): Answer => ({
 	status,
@@ -43,7 +46,7 @@ afterEach(() => {
 
 function setup(reply: (request: FakeRequest) => Answer) {
 	const time = clock();
-	const fake = fakeTransport({[HOST]: reply});
+	const fake = fakeTransport({[HOST]: reply, [API2]: reply});
 	const searchcast = createSearchcast({
 		now: time.now,
 		transport: fake.transport,
@@ -89,11 +92,42 @@ describe('example recipe: marginalia', () => {
 		);
 	});
 
-	it('takes the key from MARGINALIA_API_KEY', async () => {
+	it('with MARGINALIA_API_KEY, calls the current API as a same-origin fetch with the key in an API-Key header', async () => {
 		process.env.MARGINALIA_API_KEY = 'my-key';
-		const {searchcast, requests} = setup(() => answer([]));
-		await searchcast.search('q', {engines: [marginalia]});
-		expect(requests[0]!.url).toBe(`https://${HOST}/my-key/search/q`);
+		const {searchcast, requests} = setup(() =>
+			answer([{url: 'https://a.example/', title: 'A', description: 'about a'}]),
+		);
+		const {results} = await searchcast.search('c++ & a/b?', {
+			engines: [marginalia],
+		});
+		expect(results).toEqual([
+			{title: 'A', url: 'https://a.example/', snippet: 'about a'},
+		]);
+		expect(requests).toEqual([
+			expect.objectContaining({
+				url: `https://${API2}/search?query=c%2B%2B%20%26%20a%2Fb%3F`,
+				kind: 'fetch',
+				referer: `https://${API2}/`,
+				headers: {'api-key': 'my-key'},
+			}),
+		]);
+		expect(requests[0]!.url).not.toContain('my-key');
+	});
+
+	it('without a key (unset or empty), calls the URL-keyed API with no headers', async () => {
+		for (const key of [undefined, '']) {
+			if (key === undefined) delete process.env.MARGINALIA_API_KEY;
+			else process.env.MARGINALIA_API_KEY = key;
+			const {searchcast, requests} = setup(() => answer([]));
+			await searchcast.search('q', {engines: [marginalia]});
+			expect(requests).toEqual([
+				expect.objectContaining({
+					url: `https://${HOST}/public/search/q`,
+					kind: 'document',
+				}),
+			]);
+			expect(requests[0]!.headers).toBeUndefined();
+		}
 	});
 
 	it.each([
@@ -103,20 +137,30 @@ describe('example recipe: marginalia', () => {
 		[250, '100'],
 		[2.7, '2'],
 	])(
-		'sends count for maxResults %s (clamped to 1..100)',
+		'sends count for maxResults %s (clamped to 1..100), to either API',
 		async (max, count) => {
-			const {searchcast, requests} = setup(() => answer([]));
-			await searchcast.search('q', {
-				engines: [marginalia],
-				...(max !== undefined && {maxResults: max}),
-			});
-			expect(new URL(requests[0]!.url).searchParams.get('count')).toBe(count);
+			for (const key of [undefined, 'my-key']) {
+				if (key === undefined) delete process.env.MARGINALIA_API_KEY;
+				else process.env.MARGINALIA_API_KEY = key;
+				const {searchcast, requests} = setup(() => answer([]));
+				await searchcast.search('q', {
+					engines: [marginalia],
+					...(max !== undefined && {maxResults: max}),
+				});
+				expect(new URL(requests[0]!.url).searchParams.get('count')).toBe(count);
+			}
 		},
 	);
 
-	it.each([503, 429])(
-		'HTTP %s (the shared rate limit) is blocked and starts the cooldown',
-		async (status) => {
+	it.each([
+		[503, undefined],
+		[429, undefined],
+		[503, 'my-key'],
+		[429, 'my-key'],
+	])(
+		'HTTP %s (the rate limit) is blocked and starts the cooldown (key: %s)',
+		async (status, key) => {
+			if (key !== undefined) process.env.MARGINALIA_API_KEY = key;
 			const {searchcast, time, hits} = setup(() => json({}, status));
 			const first = await searchcast.search('q', {engines: [marginalia]}).then(
 				() => expect.fail('expected a failure'),
@@ -125,7 +169,7 @@ describe('example recipe: marginalia', () => {
 			expect(first.failures[0]!.error.kind).toBe('blocked');
 			time.advance(DEFAULT_COOLDOWN_MS - 1);
 			await searchcast.search('q', {engines: [marginalia]}).catch(() => {});
-			expect(hits(HOST)).toHaveLength(1);
+			expect(hits(key ? API2 : HOST)).toHaveLength(1);
 		},
 	);
 

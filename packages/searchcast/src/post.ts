@@ -1,12 +1,14 @@
 // POST requests: a page's `fetch()` POST (only the `fetch` kind), and the
-// CORS preflight Chrome sends before one when it goes to another origin with a
-// `content-type` that is not CORS-safelisted. This module checks a POST's
+// CORS preflight Chrome sends before a `fetch` (POST, or GET since author
+// headers) when it goes to another origin with a header that is not
+// CORS-safelisted (an author header, or a POST's `content-type`). This module checks a POST's
 // options and a preflight's answer; transport.ts sends both (the preflight
 // without cookies, on connections of its own, remembered per page origin and
 // URL for its max-age). Header tables: chrome.ts. Measurement:
 // work/notes/findings/post-requests.md. Decisions:
 // work/notes/observations/2026-09-29-post-requests-decisions.md.
 
+import type {AuthorHeaders} from './author-headers.js';
 import {TEXT_BODY_CONTENT_TYPE, type FetchSite} from './chrome.js';
 import {SearchcastError} from './errors.js';
 import type {TransportResponse} from './response.js';
@@ -26,6 +28,8 @@ export interface PostOptions {
 	fetchSite?: FetchSite;
 	body?: string | Uint8Array;
 	contentType?: string;
+	/** Author headers, as a page's script adds them (see `authorHeaders`). */
+	headers?: AuthorHeaders;
 }
 
 /** The largest request body a POST may carry by default, in bytes (1 MiB; the transport's `maxRequestBodyBytes`). */
@@ -100,20 +104,25 @@ export function postBody(
 }
 
 /**
- * Whether a credentialed POST may follow this preflight answer, as Chrome
+ * Whether a credentialed `fetch` may follow this preflight answer, as Chrome
  * decides it: an ok status (2xx), `access-control-allow-origin` equal to the
  * page's origin (a credentialed request does not accept `*`),
- * `access-control-allow-credentials: true` and `content-type` among
- * `access-control-allow-headers`. Returns how long to remember it, in
- * seconds, at most `maxAgeS` (Chromium's cap by default); a refusal throws: statuses as the declarative runner maps them
- * (202/403/429 `blocked`, 404/410 `recipe`, others `transport`), CORS
- * headers that do not allow the request `recipe`.
+ * `access-control-allow-credentials: true` and every name of `names` (the
+ * preflight's `access-control-request-headers`) among
+ * `access-control-allow-headers` (case-insensitive; `*` is no wildcard for a
+ * credentialed request, measured). Returns how long to remember it, in
+ * seconds, at most `maxAgeS` (Chromium's cap by default), and the header
+ * names the answer allows (what the preflight cache covers). A refusal
+ * throws: statuses as the declarative runner maps them (202/403/429
+ * `blocked`, 404/410 `recipe`, others `transport`), CORS headers that do not
+ * allow the request `recipe`.
  */
 export function checkPreflight(
 	response: TransportResponse,
 	origin: string,
+	names: readonly string[],
 	maxAgeS = MAX_PREFLIGHT_AGE_S,
-): number {
+): {maxAgeS: number; allowedHeaders: Set<string>} {
 	const {status, url, headers} = response;
 	if (!(status >= 200 && status <= 299) || status === 202) {
 		const where = `preflight: HTTP ${status} from ${url}`;
@@ -123,26 +132,34 @@ export function checkPreflight(
 			throw new SearchcastError('recipe', where);
 		throw new SearchcastError('transport', where);
 	}
-	const allowed = (headers.get('access-control-allow-headers') ?? '')
-		.split(',')
-		.map((name) => name.trim().toLowerCase());
+	const allowed = new Set(
+		(headers.get('access-control-allow-headers') ?? '')
+			.split(',')
+			.map((name) => name.trim().toLowerCase())
+			.filter(Boolean),
+	);
+	const missing = names.find((name) => !allowed.has(name));
 	const refused =
 		headers.get('access-control-allow-origin') !== origin
 			? `access-control-allow-origin is not ${origin}`
 			: headers.get('access-control-allow-credentials') !== 'true'
 				? 'access-control-allow-credentials is not true'
-				: !allowed.includes('content-type')
-					? 'content-type is not in access-control-allow-headers'
+				: missing !== undefined
+					? `${missing} is not in access-control-allow-headers`
 					: undefined;
 	if (refused) {
 		throw new SearchcastError(
 			'recipe',
-			`the CORS preflight to ${url} does not allow the POST from ${origin}: ${refused}`,
+			`the CORS preflight to ${url} does not allow the request from ${origin}: ${refused}`,
 		);
 	}
 	const maxAge = headers.get('access-control-max-age');
 	const age = maxAge === null ? NaN : Number(maxAge.trim());
-	return Number.isInteger(age) && age >= 0
-		? Math.min(age, maxAgeS)
-		: Math.min(DEFAULT_PREFLIGHT_AGE_S, maxAgeS);
+	return {
+		maxAgeS:
+			Number.isInteger(age) && age >= 0
+				? Math.min(age, maxAgeS)
+				: Math.min(DEFAULT_PREFLIGHT_AGE_S, maxAgeS),
+		allowedHeaders: allowed,
+	};
 }
