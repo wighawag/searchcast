@@ -65,10 +65,10 @@
 //   proxy's loopback, then): the caller's egress is never bypassed.
 // - Errors are InstallError (this is install-side), without install-recipes'
 //   "Nothing was installed." suffix: the caller adds its own context.
-// - Not exported from `searchcast/install` (yet): the next task wires it into
-//   `installRecipes`, which is how embedders reach it. Alternative: export
-//   `fetchIpfs` as a public API now; deferred so no API is published without
-//   a user.
+// - Not exported from `searchcast/install`: `installRecipes` (an `ipfs://`
+//   source, task install-recipes-from-ipfs) is how embedders reach it; only
+//   `DEFAULT_IPFS_GATEWAYS` is exported. Alternative: export `fetchIpfs` as a
+//   public API; deferred so no API is published without a user.
 
 import {createHash} from 'node:crypto';
 import {CarBufferReader} from '@ipld/car/buffer-reader';

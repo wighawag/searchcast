@@ -23,6 +23,7 @@ export {
 	type InstallRecipesResult,
 } from './install-recipes.js';
 export {MAX_UNPACKED_BYTES as MAX_RECIPES_UNPACKED_BYTES} from './recipe-archive.js';
+export {DEFAULT_IPFS_GATEWAYS} from './ipfs.js';
 export {
 	formatInstalledRecipeSets,
 	formatRecipeSets,

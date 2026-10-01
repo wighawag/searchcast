@@ -1,10 +1,13 @@
 // `searchcast install-recipes`: install a set of recipes from a release archive
-// (a URL or a local file), only when the user types it (ADR 0002): imported by
+// (a URL or a local file) or from IPFS (`ipfs://<cid>[/<path>]`, an archive or
+// a set directory), only when the user types it (ADR 0002): imported by
 // cli.ts and by `searchcast/install` (install-api.ts, for embedders), never by
 // the main entry. Code recipes are code with
 // full Node access, so what gets installed must be exactly what the user chose
-// to trust: the archive's sha256 is REQUIRED (for URLs and files alike) and
-// checked BEFORE anything is unpacked. The download reuses install-libcurl's
+// to trust: the archive's sha256 is REQUIRED for URLs and files and checked
+// BEFORE anything is unpacked; for IPFS the CID is the pin (ipfs.ts verifies
+// every block against it before anything is used), and a --sha256 given for
+// an IPFS archive must match as well. The download reuses install-libcurl's
 // (download.ts: the caller's proxy only, proxy environment ignored, no https
 // to http redirect, a size cap) and the tar reader is tar.ts.
 //
@@ -20,8 +23,9 @@
 //   name stays recorded in `.source.json`. Alternative: refuse a mismatch.
 // - `--proxy` with a local file is refused rather than ignored: the user
 //   asked for an egress that would not be used. Alternative: ignore it.
-// - A source is a URL only when it starts with `http://` or `https://`; any
-//   other `scheme://` is refused; everything else is a file path.
+// - A source is a URL only when it starts with `http://` or `https://` (or,
+//   since install-recipes-from-ipfs, `ipfs://`); any other `scheme://` is
+//   refused; everything else is a file path.
 // - Hidden files (a leading '.', such as macOS `._x.js` AppleDouble files
 //   and the reserved `.source.json`) are refused like other non-recipes.
 // - Size caps: 16 MiB archive, 64 MiB unpacked (recipes are small text).
@@ -41,6 +45,36 @@
 // - `recipes list` is the CLI's first `<noun> <verb>` command (the others are
 //   single verbs); `recipes` takes only `list` today. It and install take
 //   `--dir` to name another base directory (tests, or a caller's own layout).
+//
+// Decisions (task install-recipes-from-ipfs, 2026-10-01):
+// - `ipfs://` is the one more source kind; other schemes stay refused. The
+//   verified content decides the kind: a file is a release archive (same
+//   checks), a directory is a set directory, held to an archive's file rules
+//   (recipe-archive.ts `recipeDirectoryFiles`) and REQUIRED to hold a
+//   `manifest.json` (the spec's "manifest.json and recipe files"), so a
+//   folder of random JSON is not taken for a set; `--name` still overrides
+//   its name. Alternative: a manifest only when there is no --name, as for
+//   archives.
+// - `--sha256` with an IPFS DIRECTORY is refused (before anything is
+//   written, after the fetch, since only the content says it is a
+//   directory): there are no archive bytes to compare, and silently ignoring
+//   a pin the user typed would let them believe it was checked.
+//   Alternative: ignore it, or hash some canonical listing (a format of our
+//   own that no publisher would ship).
+// - `ipfsGateways` (CLI `--ipfs-gateway`) with a non-IPFS source is refused,
+//   like `--proxy` with a file: the user asked for something that would not
+//   be used. This holds for the API too (an embedder passing gateways for
+//   every install must pass them for `ipfs://` sources only).
+// - Caps: the CAR is held to `maxArchiveBytes` and the reassembled content
+//   to `maxUnpackedBytes`; an IPFS archive file is also held to
+//   `maxArchiveBytes` like a downloaded one. No new tunable.
+// - `.source.json` for IPFS: `source` (the ipfs:// URL as given), `cid`
+//   (the ROOT CID, as given; with the path in `source` it is the pin), and
+//   `gateway` (whose CAR verified; a record, not a trust); `sha256` is the
+//   archive's for an archive, absent for a directory (so `sha256` became
+//   optional in `RecipeSetSource`), and there is no `url`.
+// - `DEFAULT_IPFS_GATEWAYS` is exported from `searchcast/install`, so an
+//   embedder can add its own gateway in front of the defaults.
 
 import {createHash} from 'node:crypto';
 import {
@@ -56,25 +90,29 @@ import {
 import {join, resolve} from 'node:path';
 import {describeProxy, download} from './download.js';
 import {InstallError} from './install.js';
+import {fetchIpfs} from './ipfs.js';
 import {checkNumber} from './options.js';
 import {recipesDir, SOURCE_FILE, type RecipeSetSource} from './recipes.js';
 import {
 	MAX_ARCHIVE_BYTES,
 	MAX_UNPACKED_BYTES,
 	readManifest,
+	recipeDirectoryFiles,
 	recipeFiles,
 	setName,
 } from './recipe-archive.js';
 
 export interface InstallRecipesOptions {
-	/** The archive's expected sha256 (hex). Required. */
-	sha256: string;
+	/** The archive's expected sha256 (hex). Required, except for an `ipfs://` source (the CID pins it; if given for an IPFS archive it must match too, and it is refused for an IPFS directory). */
+	sha256?: string;
 	/** The set's name; default the archive's `manifest.json` name. */
 	name?: string;
 	/** The base directory; default `recipesDir(env)`. */
 	dir?: string;
-	/** Proxy for a URL download (`http://`, `socks5://`, `socks5h://`). */
+	/** Proxy for a URL or IPFS download (`http://`, `socks5://`, `socks5h://`). */
 	proxy?: string;
+	/** Trustless gateways (base URLs) for an `ipfs://` source, tried in order. Default `DEFAULT_IPFS_GATEWAYS`; refused for other sources. */
+	ipfsGateways?: readonly string[];
 	/** Replace a differing set already installed under the same name. */
 	force?: boolean;
 	/** Where `XDG_DATA_HOME` is read from. Default `process.env`. */
@@ -119,27 +157,56 @@ export async function installRecipes(
 			integer: true,
 			max: MAX_UNPACKED_BYTES,
 		}) ?? MAX_UNPACKED_BYTES;
-	const pinned = (options.sha256 ?? '').toLowerCase();
-	if (!/^[0-9a-f]{64}$/.test(pinned)) {
+	const ipfs = IPFS.test(source);
+	const pinned =
+		options.sha256 === undefined && ipfs
+			? undefined
+			: (options.sha256 ?? '').toLowerCase();
+	if (pinned !== undefined && !/^[0-9a-f]{64}$/.test(pinned)) {
 		throw new InstallError(
-			`--sha256 <hex> is required: the archive's sha256 is the trust decision (recipes are code). ${NOTHING}`,
+			ipfs
+				? `--sha256 must be 64 hex digits (or left out: the CID pins ${source}). ${NOTHING}`
+				: `--sha256 <hex> is required: the archive's sha256 is the trust decision (recipes are code). ${NOTHING}`,
+		);
+	}
+	if (options.ipfsGateways !== undefined && !ipfs) {
+		throw new InstallError(
+			`--ipfs-gateway applies to an ipfs:// source only, and ${source} is not one. ${NOTHING}`,
 		);
 	}
 	if (options.name !== undefined) setName(options.name, '--name');
-	const archive = await fetchArchive(source, options, maxArchiveBytes, log);
-	const sha256 = hash(archive.body);
-	if (sha256 !== pinned) {
-		throw new InstallError(
-			`checksum mismatch for ${archive.url ?? source}: got sha256 ${sha256}, pinned ${pinned}. ${NOTHING}`,
+	const limits = {maxArchiveBytes, maxUnpackedBytes};
+	const got: Fetched = ipfs
+		? await fetchFromIpfs(source, options, limits, log)
+		: {archive: await fetchArchive(source, options, maxArchiveBytes, log)};
+	let files: Map<string, Buffer>;
+	let sha256: string | undefined;
+	if (got.archive) {
+		sha256 = hash(got.archive.body);
+		if (pinned !== undefined && sha256 !== pinned) {
+			throw new InstallError(
+				`checksum mismatch for ${got.archive.url ?? source}: got sha256 ${sha256}, pinned ${pinned}. ${NOTHING}`,
+			);
+		}
+		log(
+			pinned !== undefined
+				? `verified sha256 ${sha256} (pinned with --sha256)`
+				: `archive sha256 ${sha256} (not pinned: the CID pins it)`,
 		);
+		files = recipeFiles(got.archive.body, maxUnpackedBytes);
+	} else {
+		if (pinned !== undefined) {
+			throw new InstallError(
+				`--sha256 pins an archive's bytes, and ${source} is a directory (the CID pins it): leave --sha256 out. ${NOTHING}`,
+			);
+		}
+		files = recipeDirectoryFiles(got.directory!, source, maxUnpackedBytes);
 	}
-	log(`verified sha256 ${sha256} (pinned with --sha256)`);
-	const files = recipeFiles(archive.body, maxUnpackedBytes);
 	const manifest = readManifest(files.get('manifest.json'));
 	const name = options.name ?? manifest?.name;
 	if (name === undefined) {
 		throw new InstallError(
-			`the archive has no manifest.json name; give the set a name with --name. ${NOTHING}`,
+			`the ${got.archive ? 'archive' : 'directory'} has no manifest.json name; give the set a name with --name. ${NOTHING}`,
 		);
 	}
 	const base = options.dir ?? recipesDir(options.env ?? process.env);
@@ -163,10 +230,12 @@ export async function installRecipes(
 			`${dir} already exists and differs from this archive; rerun with --force to replace it. ${NOTHING}`,
 		);
 	}
+	const local = !ipfs && !got.archive?.url;
 	const record: RecipeSetSource = {
-		source: archive.url ? source : resolve(source),
-		...(archive.url ? {url: archive.url} : {}),
-		sha256,
+		source: local ? resolve(source) : source,
+		...(got.archive?.url ? {url: got.archive.url} : {}),
+		...(got.ipfs ?? {}),
+		...(sha256 !== undefined ? {sha256} : {}),
 		...(manifest ? {manifest} : {}),
 		files: hashes,
 		installedAt: new Date().toISOString(),
@@ -201,6 +270,47 @@ export async function installRecipes(
 	return report(existing ? 'replaced' : 'installed');
 }
 
+const IPFS = /^ipfs:\/\//i;
+
+/** What a source gave: an archive (with its final URL for a download) or, from IPFS only, a directory's files. */
+interface Fetched {
+	archive?: {body: Buffer; url?: string};
+	directory?: Map<string, Buffer>;
+	/** For an `ipfs://` source: the root CID and the gateway whose CAR verified. */
+	ipfs?: {cid: string; gateway: string};
+}
+
+/** An `ipfs://` source's verified content: an archive file or a set directory, and where it came from. */
+async function fetchFromIpfs(
+	source: string,
+	options: InstallRecipesOptions,
+	limits: {maxArchiveBytes: number; maxUnpackedBytes: number},
+	log: (line: string) => void,
+): Promise<Fetched> {
+	let fetched;
+	try {
+		fetched = await fetchIpfs(source, {
+			ipfsGateways: options.ipfsGateways,
+			proxy: options.proxy,
+			maxCarBytes: limits.maxArchiveBytes,
+			maxBytes: limits.maxUnpackedBytes,
+			log,
+		});
+	} catch (cause) {
+		if (!(cause instanceof InstallError)) throw cause;
+		throw new InstallError(`${cause.message}. ${NOTHING}`, {cause});
+	}
+	const {content, cid, gateway} = fetched;
+	const ipfs = {cid, gateway};
+	if (content.type === 'directory') return {directory: content.files, ipfs};
+	if (content.bytes.length > limits.maxArchiveBytes) {
+		throw new InstallError(
+			`${source} is larger than ${limits.maxArchiveBytes} bytes. ${NOTHING}`,
+		);
+	}
+	return {archive: {body: content.bytes}, ipfs};
+}
+
 /** The archive's bytes, and the final URL for a download. */
 async function fetchArchive(
 	source: string,
@@ -227,7 +337,7 @@ async function fetchArchive(
 	}
 	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
 		throw new InstallError(
-			`${source} is neither an http(s) URL nor a file path. ${NOTHING}`,
+			`${source} is neither an http(s) URL nor a file path (nor an ipfs:// URL). ${NOTHING}`,
 		);
 	}
 	if (options.proxy) {

@@ -4,8 +4,9 @@
 // downloads the pinned library into the data directory, the only download
 // searchcast ever makes and only when typed; `doctor` reports the library and
 // whether impersonation is active (no network request without `--remote`);
-// `install-recipes` installs a recipe set from a checksum-pinned archive (a
-// URL is downloaded only then, and only when typed); `recipes list` shows the
+// `install-recipes` installs a recipe set from a checksum-pinned archive or
+// from IPFS, verified against the CID (downloaded only then, and only when
+// typed); `recipes list` shows the
 // installed sets. `serve` and `browser-query` are the browser runner's
 // commands, run by the optional `@searchcast/browser` (see browser-cli.ts).
 //
@@ -45,7 +46,14 @@ const COMMANDS: Record<string, string[]> = {
 	query: ['recipe', 'proxy', 'libcurl'],
 	'install-libcurl': ['proxy', 'force'],
 	doctor: ['libcurl', 'proxy', 'remote'],
-	'install-recipes': ['sha256', 'name', 'dir', 'proxy', 'force'],
+	'install-recipes': [
+		'sha256',
+		'name',
+		'dir',
+		'proxy',
+		'force',
+		'ipfs-gateway',
+	],
 	recipes: ['dir'],
 };
 
@@ -84,6 +92,7 @@ interface Values {
 	sha256?: string;
 	name?: string;
 	dir?: string;
+	'ipfs-gateway'?: string[];
 }
 
 async function installCommand(values: Values) {
@@ -98,9 +107,10 @@ async function installCommand(values: Values) {
 async function installRecipesCommand(values: Values) {
 	const [source, ...extra] = values.positionals;
 	if (!source || extra.length) {
-		usageError('install-recipes takes one <url|path>');
+		usageError('install-recipes takes one <url|path|ipfs://cid/path>');
 	}
-	if (!values.sha256) {
+	// An ipfs:// source is pinned by its CID: --sha256 is optional there.
+	if (!values.sha256 && !/^ipfs:\/\//i.test(source)) {
 		usageError(
 			"install-recipes needs --sha256 <hex>: pinning the archive's checksum is the trust decision",
 		);
@@ -110,6 +120,7 @@ async function installRecipesCommand(values: Values) {
 		name: values.name,
 		dir: values.dir,
 		proxy: values.proxy,
+		ipfsGateways: values['ipfs-gateway'],
 		force: values.force,
 		log: (line) => process.stderr.write(`searchcast: ${line}\n`),
 	});
@@ -155,6 +166,7 @@ async function main(argv: string[]): Promise<void> {
 				sha256: {type: 'string'},
 				name: {type: 'string'},
 				dir: {type: 'string'},
+				'ipfs-gateway': {type: 'string', multiple: true},
 				help: {type: 'boolean', short: 'h'},
 			},
 		});

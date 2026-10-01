@@ -4,7 +4,9 @@
 // ONE top-level directory, with an optional `manifest.json` `{name, version}`.
 // Anything else (a link, a nested directory, another file type, a hidden
 // file, an absolute or `..` path) is an InstallError naming the entry. Pure:
-// bytes in, file names and bytes out.
+// bytes in, file names and bytes out. A set DIRECTORY fetched from IPFS
+// (`recipeDirectoryFiles`) is held to the same file rules, plus a required
+// `manifest.json` (see install-recipes.ts' decisions).
 
 import {InstallError} from './install.js';
 import {SOURCE_FILE} from './recipes.js';
@@ -64,10 +66,7 @@ export function recipeFiles(
 		}
 		if (parts.length > 2) refuse(entry, 'is in a nested directory');
 		const file = parts.at(-1)!;
-		if (file.startsWith('.')) refuse(entry, 'is a hidden file');
-		if (!RECIPE_FILE.test(file)) {
-			refuse(entry, 'is not a *.mjs, *.js or *.json file');
-		}
+		checkFileName(file, (why) => refuse(entry, why));
 		const top = parts.length === 2 ? parts[0] : undefined;
 		if (top !== undefined) tops.add(top);
 		found.push({top, file, body: entry.body});
@@ -89,6 +88,44 @@ export function recipeFiles(
 		files.set(file, body);
 	}
 	return new Map([...files].sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+/**
+ * A flat directory's files (name to bytes, as ipfs.ts lists a verified
+ * UnixFS directory) checked with an archive's file rules, sorted by name;
+ * it must hold a `manifest.json`. `what` names the directory in messages.
+ */
+export function recipeDirectoryFiles(
+	files: ReadonlyMap<string, Buffer>,
+	what: string,
+	maxUnpackedBytes = MAX_UNPACKED_BYTES,
+): Map<string, Buffer> {
+	let total = 0;
+	for (const [file, body] of files) {
+		checkFileName(file, (why) => {
+			throw new InstallError(
+				`the directory entry ${JSON.stringify(file)} ${why}. ${NOTHING}`,
+			);
+		});
+		total += body.length;
+	}
+	if (total > maxUnpackedBytes) {
+		throw new InstallError(
+			`${what} holds more than ${maxUnpackedBytes} bytes. ${NOTHING}`,
+		);
+	}
+	if (!files.has('manifest.json')) {
+		throw new InstallError(
+			`${what} is a directory without a manifest.json, so not a recipe set directory. ${NOTHING}`,
+		);
+	}
+	return new Map([...files].sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+/** A recipe file's name, else `refuse(why)`: no hidden file, only `*.mjs`, `*.js`, `*.json`. */
+function checkFileName(file: string, refuse: (why: string) => never): void {
+	if (file.startsWith('.')) refuse('is a hidden file');
+	if (!RECIPE_FILE.test(file)) refuse('is not a *.mjs, *.js or *.json file');
 }
 
 export function readManifest(

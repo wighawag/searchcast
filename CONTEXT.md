@@ -98,6 +98,12 @@ _Avoid_: cache, config dir
 serpcast's data directory, `$XDG_DATA_HOME/serpcast`, read for one release (0.2.x) when the data directory lacks an item (the library file, a recipe set by name). Never written, never moved: `searchcast doctor` names what is read from it and prints the `mv` command the user can run.
 _Avoid_: legacy directory, migration
 
+### Installing
+
+**Trustless gateway**:
+An HTTP(S) IPFS gateway asked for content as a CAR (`GET <gateway>/ipfs/<cid>[/<path>]?format=car`, `accept: application/vnd.ipld.car`, the IPFS trustless gateway spec) when `searchcast install-recipes` is given an `ipfs://<cid>[/<path>]` source. It is trusted for nothing: every block is checked against its CID, and the path resolved from the root CID, before anything is used, so a gateway that serves wrong or missing blocks (or is rate-limited) is skipped for the next one. Reached with the install downloader, through the caller's proxy only; never a local daemon or peer-to-peer traffic. The defaults are public gateways; `--ipfs-gateway` (`ipfsGateways`) replaces them, for example with a local Kubo node on loopback.
+_Avoid_: IPFS node, IPFS client, pinning service
+
 ### Errors
 
 Every failure is a `SearchcastError` (serpcast's name `SerpcastError` is a deprecated alias for one release) with a `kind`. An empty result list is never an error and only comes from a recipe's `empty` selector.

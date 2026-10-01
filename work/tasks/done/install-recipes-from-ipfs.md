@@ -37,3 +37,13 @@ Goal: `searchcast install-recipes ipfs://<cid>/<set>` is the whole install, safe
 - Public repo: no real search engine named (placeholders), except the owner-approved Marginalia and Mwmbl examples.
 - No em dashes anywhere; do not hard-wrap Markdown paragraphs.
 - Bound shell commands (`timeout`), cap output, never grep `node_modules`, `dist` or `.git`. No network in tests.
+
+## Decisions
+
+These are recorded in the "Decisions (task install-recipes-from-ipfs, 2026-10-01)" block in the header comment of `packages/searchcast/src/install-recipes.ts`:
+1. **A set directory must hold `manifest.json`**, even when `--name` is given (archives don't need one). This stops a folder of random JSON being taken for a set.
+2. **`--sha256` with an IPFS directory is refused**, not ignored. There are no archive bytes to compare it with, so ignoring it would let the user think it was checked.
+3. **Gateways with a non-IPFS source are refused**, in the CLI and the API, matching the existing rule for `--proxy` with a file. This affects embedders: they must pass gateways only for `ipfs://` sources.
+4. **The caps are the existing ones:** the download is held to `maxArchiveBytes` and the rebuilt content to `maxUnpackedBytes`. No new setting.
+5. **`.source.json` records the root CID as given** (the path is in `source`). Its `sha256` field is now optional, which changes the public `RecipeSetSource` type.
+6. **`DEFAULT_IPFS_GATEWAYS` is now exported from `searchcast/install`**, so an embedder can put its own gateway in front. `fetchIpfs` itself stays internal; its note in `ipfs.ts` is updated.
