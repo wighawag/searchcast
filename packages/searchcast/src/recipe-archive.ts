@@ -10,6 +10,12 @@ import {InstallError} from './install.js';
 import {SOURCE_FILE} from './recipes.js';
 import {readTarGz, type TarEntry} from './tar.js';
 
+/**
+ * The ceiling (and default) of `installRecipes`' `maxArchiveBytes`, and of
+ * the CAR an IPFS install downloads (ipfs.ts). Here rather than in
+ * install-recipes.ts so ipfs.ts can share it without an import cycle.
+ */
+export const MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
 /** The ceiling (and default) of `installRecipes`' `maxUnpackedBytes`. */
 export const MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 const RECIPE_FILE = /\.(?:mjs|js|json)$/;

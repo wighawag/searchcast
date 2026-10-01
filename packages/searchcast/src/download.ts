@@ -1,6 +1,6 @@
-// A plain GET of one file, for `searchcast install-libcurl` only (src/install.ts
-// is its one importer): the library being installed cannot download itself, so
-// this uses Node's own http and tls. Egress is the caller's `proxy` and nothing
+// A plain GET of one file, for the install commands only (install.ts,
+// install-recipes.ts and ipfs.ts import it): the library being installed
+// cannot download itself, so this uses Node's own http and tls. Egress is the caller's `proxy` and nothing
 // else: `http://` (CONNECT tunnel), `socks5://` (host names resolved LOCALLY)
 // or `socks5h://` (resolved at the proxy), with optional user:password, as the
 // transport accepts. Proxy environment variables are ignored, like the
@@ -18,6 +18,8 @@ export interface DownloadOptions {
 	maxBytes: number;
 	/** Give up when the connection is silent this long, in ms. */
 	idleTimeoutMs: number;
+	/** The `accept` request header (none by default), for a gateway's CAR response. */
+	accept?: string;
 }
 
 interface Proxy {
@@ -138,6 +140,7 @@ async function get(
 			headers: {
 				host: url.host,
 				'user-agent': 'searchcast',
+				...(options.accept ? {accept: options.accept} : {}),
 				'accept-encoding': 'identity',
 			},
 		});

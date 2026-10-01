@@ -351,11 +351,17 @@ describe('the only download path', () => {
 		return seen;
 	};
 
-	it('is the explicit install commands: only install.ts and install-recipes.ts download, and only the bin and searchcast/install import them', () => {
+	it('is the explicit install commands: only install.ts, install-recipes.ts and ipfs.ts download, and only the bin and searchcast/install import them', () => {
 		expect(importers('download.js').sort()).toEqual([
 			'install-recipes.ts',
 			'install.ts',
+			'ipfs.ts',
 		]);
+		// The verified IPFS fetch is install-side too (none yet, or these).
+		for (const importer of importers('ipfs.js'))
+			expect(['cli.ts', 'install-api.ts', 'install-recipes.ts']).toContain(
+				importer,
+			);
 		expect(importers('install-recipes.js').sort()).toEqual([
 			'cli.ts',
 			'install-api.ts',
@@ -365,11 +371,13 @@ describe('the only download path', () => {
 			'cli.ts',
 			'install-api.ts',
 			'install-recipes.ts',
+			'ipfs.ts',
 			'recipe-archive.ts',
 		]);
 		expect(importers('recipe-archive.js').sort()).toEqual([
 			'install-api.ts',
 			'install-recipes.ts',
+			'ipfs.ts',
 		]);
 		expect(importers('cli.js')).toEqual([]);
 		expect(importers('install-api.js')).toEqual([]);
@@ -383,6 +391,7 @@ describe('the only download path', () => {
 			'install.ts',
 			'install-recipes.ts',
 			'install-api.ts',
+			'ipfs.ts',
 		])
 			expect(main.has(module), module).toBe(false);
 		expect(reached('install-api.ts').has('download.ts')).toBe(true);
