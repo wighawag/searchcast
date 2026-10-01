@@ -461,7 +461,7 @@ searchcast install-recipes ipfs://<cid>/my-set
 
 The path names either a release archive (a file, checked like any other archive, see [Release archive format](#release-archive-format)) or a **set directory**: a flat directory holding a `manifest.json` and recipe files only, held to the same rules as an archive's files (no hidden files, no other file types, no subdirectories), and installed the same way (temporary directory, rename into place, `--force` to replace, an identical set left alone).
 
-A release folder's root (the archive, its `.sha256`, a README and the unpacked set side by side) is not a set itself: install `ipfs://<cid>/<archive>.tar.gz` or `ipfs://<cid>/<set-dir>` instead. searchcast refuses such a directory from its listing alone, before downloading any file, and its message names both commands.
+A release folder's root (the archive, its `.sha256`, a README and the unpacked set side by side) is not a set itself: install `ipfs://<cid>/<archive>.tar.gz` or `ipfs://<cid>/<set-dir>` instead. searchcast refuses such a directory from its listing alone, before downloading any file, and its message names both commands. Through `searchcast/install`, an embedder can read `error.suggestions` to print its own command (each `{source, kind, sha256?}`: the full `ipfs://` URL, `'archive'` or `'set-directory'`, and the `--sha256` given, on an archive only).
 
 **What is verified.** The CID is the pin: it names exactly one content, so whoever serves it is trusted for nothing. searchcast asks a **trustless gateway** for the content as a CAR (`GET <gateway>/ipfs/<cid>/<path>?format=car&dag-scope=entity`, `accept: application/vnd.ipld.car`, the [trustless gateway spec](https://specs.ipfs.tech/http-gateways/trustless-gateway/): the whole file for an archive; for a directory its listing, checked before its files are asked for with `dag-scope=all` from the same gateway), hashes every block and checks it against its CID (sha2-256, UnixFS dag-pb and raw blocks only), resolves `<path>` itself from the root CID through verified links, and rebuilds the files from verified blocks only, before anything is unpacked or written. A gateway that answers with an error (a 429 rate limit, a 5xx), times out, or sends a block that does not match, a missing block or extra junk is skipped and the next one asked; the install fails only when every gateway failed, listing each one's reason. The CAR is held to the archive cap (16 MiB) and the rebuilt content to the unpacked cap (64 MiB). A `--sha256` is still accepted for an archive, and then must match as well; it is refused for a set directory, which has no archive bytes to compare. IPNS and DNSLink names are not accepted, only CIDs.
 
@@ -490,7 +490,7 @@ console.log(listRecipeSets(recipesDir()));
 | `DEFAULT_IPFS_GATEWAYS` | The trustless gateways an `ipfs://` source is fetched from by default, in order: to put your own in front, `[mine, ...DEFAULT_IPFS_GATEWAYS]`. |
 | `listRecipeSets(base)`, `formatRecipeSets(base, sets)`, `formatInstalledRecipeSets(env?)`, `recipesDir(env?)`, `recipeSetDir(name, env?)` | `searchcast recipes list`: the installed sets with their `.source.json` record, the text the CLI prints (with `--dir`, and without it, old data directory included), the recipes directory and one set's directory (old data directory fallback included). |
 | `doctor(options?)`, `healthy(report)`, `formatReport(report, proxy?)` | `searchcast doctor`: the report (`{pinned, target, library?, impersonating, problem?, remote?, oldDataDir?}`), whether it is all good, and the text the CLI prints; options `libcurlPath`, `proxy`, `remote`, `env`. |
-| `InstallError` | What a failed install rejects with; nothing was installed. |
+| `InstallError` | What a failed install rejects with; nothing was installed. Its optional `suggestions` (`InstallSuggestion[]`: `{source, kind: 'archive' \| 'set-directory', sha256?}`) are set only when an `ipfs://` directory is not a recipe set: the sources its message tells the user to try, in the same order, so you can print your own command. |
 | `LIBCURL_IMPERSONATE`, `dataDir(env?)`, `ECHO_URL` | The pinned release, searchcast's data directory, the echo service `remote` asks. |
 | `oldDataDir(env?)`, `oldDataDirHits(env?)` | serpcast's old data directory, and what is read from it with the command that moves it (`{dir, newDir, items, command}`, or `undefined`): to show the same notice as `doctor`. Deprecated with the fallback, which goes in the next minor after 0.2.x. |
 | `MAX_LIBCURL_ARCHIVE_BYTES`, `MAX_LIBCURL_UNPACKED_BYTES`, `MAX_RECIPES_ARCHIVE_BYTES`, `MAX_RECIPES_UNPACKED_BYTES` | The installers' size caps (below). |
@@ -632,8 +632,8 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/chain.ts` | 454 | 260 |
 | `src/browser.ts` | 237 | 250 |
 | `src/declarative.ts` | 198 | 220 |
-| `src/install.ts` | 239 | 180 |
-| `src/install-recipes.ts` | 373 | 250 |
+| `src/install.ts` | 270 | 180 |
+| `src/install-recipes.ts` | 486 | 250 |
 | `src/recipe-archive.ts` | 167 | 130 |
 | `src/recipes.ts` | 159 | 160 |
 | `src/tar.ts` | 53 | 60 |
@@ -652,7 +652,7 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `src/errors.ts` | 45 | 50 |
 | `src/decoy.ts` | 110 | 120 |
 | `src/options.ts` | 67 | 80 |
-| `src/install-api.ts` | 50 | 60 |
+| `src/install-api.ts` | 51 | 60 |
 | `src/data-dir.ts` | 95 | 100 |
 | `src/deprecated.ts` | 24 | 40 |
 

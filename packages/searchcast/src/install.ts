@@ -76,9 +76,40 @@ export interface InstallResult {
 	status: 'installed' | 'replaced' | 'unchanged';
 }
 
+/**
+ * A source to try instead, as data (`InstallError.suggestions`), so an
+ * embedder can print its own command rather than searchcast's.
+ */
+export interface InstallSuggestion {
+	/** The full `ipfs://` URL to install from, built from the verified listing. */
+	source: string;
+	/** What it may be: a release archive, or (a hint) a set directory. */
+	kind: 'archive' | 'set-directory';
+	/** The `--sha256` the user gave, kept on an archive suggestion only. */
+	sha256?: string;
+}
+
 /** An install that did not happen; nothing was written. */
 export class InstallError extends Error {
 	override name = 'InstallError';
+	/**
+	 * Sources to try instead, in the order of the message's "Try:" list. Set
+	 * only by install-recipes' refusal of an IPFS directory that is not a
+	 * recipe set, and only when it has something to suggest (frozen).
+	 */
+	declare readonly suggestions?: readonly InstallSuggestion[];
+
+	constructor(
+		message: string,
+		options?: ErrorOptions & {suggestions?: readonly InstallSuggestion[]},
+	) {
+		super(message, options);
+		if (options?.suggestions?.length) {
+			this.suggestions = Object.freeze(
+				options.suggestions.map((s) => Object.freeze({...s})),
+			);
+		}
+	}
 }
 
 /** The ceiling (and default) of `installLibcurl`'s `maxArchiveBytes`. */

@@ -103,6 +103,21 @@
 //   directories; the listing cannot say which entries ARE directories (only
 //   their own blocks, not fetched, would), so this is a hint and the
 //   entries are listed anyway. Alternative: the literal reading.
+//
+// Decisions (task ipfs-suggestions-as-data, 2026-10-01):
+// - The not-a-set refusal's "Try:" commands are built FROM its
+//   `InstallError.suggestions` (install.ts `InstallSuggestion`), so the data
+//   and the message cannot drift apart: same entries, order and cap (6).
+//   `fetchFromIpfs` carries them over to the error it rethrows (the one the
+//   caller sees, with "Nothing was installed." added).
+// - `suggestions` is left undefined (not `[]`) when that refusal has
+//   nothing to suggest, like the message has no "Try:" then, and on every
+//   other error: `error.suggestions?.length` and `if (error.suggestions)`
+//   agree. Alternative: `[]` to mark the not-a-set refusal itself (an
+//   embedder would then tell refusal kinds apart by a field's presence).
+// - An archive suggestion's `sha256` is the --sha256 as checked (lowercase
+//   hex), as the message shows it. The array and its entries are frozen,
+//   so one embedder cannot alter what another reads from the same error.
 
 import {createHash} from 'node:crypto';
 import {
@@ -117,7 +132,7 @@ import {
 } from 'node:fs';
 import {join, resolve} from 'node:path';
 import {describeProxy, download} from './download.js';
-import {InstallError} from './install.js';
+import {InstallError, type InstallSuggestion} from './install.js';
 import {fetchIpfs, ipfsUrl, type IpfsListing} from './ipfs.js';
 import {checkNumber} from './options.js';
 import {recipesDir, SOURCE_FILE, type RecipeSetSource} from './recipes.js';
@@ -329,7 +344,10 @@ async function fetchFromIpfs(
 		});
 	} catch (cause) {
 		if (!(cause instanceof InstallError)) throw cause;
-		throw new InstallError(`${cause.message}. ${NOTHING}`, {cause});
+		throw new InstallError(`${cause.message}. ${NOTHING}`, {
+			cause,
+			suggestions: cause.suggestions,
+		});
 	}
 	const {content, cid, gateway} = fetched;
 	const ipfs = {cid, gateway};
@@ -362,21 +380,26 @@ function checkSetListing(listing: IpfsListing, pinned: string | undefined) {
 			names.length > LISTED_ENTRIES
 				? ` and ${names.length - LISTED_ENTRIES} more`
 				: '';
-		const command = (name: string) =>
-			`searchcast install-recipes ${ipfsUrl(cid, [...segments, name])}`;
-		const commands = [
+		const at = (name: string) => ipfsUrl(cid, [...segments, name]);
+		const suggestions: InstallSuggestion[] = [
 			...names
 				.filter((name) => name.endsWith('.tar.gz') && !name.startsWith('.'))
-				.map(
-					(name) =>
-						`${command(name)}${pinned !== undefined ? ` --sha256 ${pinned}` : ''} (a release archive)`,
-				),
+				.map((name) => ({
+					source: at(name),
+					kind: 'archive' as const,
+					...(pinned !== undefined ? {sha256: pinned} : {}),
+				})),
 			...names
 				.filter(maybeSetDirectory)
-				.map((name) => `${command(name)} (may be a set directory)`),
+				.map((name) => ({source: at(name), kind: 'set-directory' as const})),
 		].slice(0, SUGGESTED_COMMANDS);
+		const commands = suggestions.map(
+			({source, kind, sha256}) =>
+				`searchcast install-recipes ${source}${sha256 !== undefined ? ` --sha256 ${sha256}` : ''} ${kind === 'archive' ? '(a release archive)' : '(may be a set directory)'}`,
+		);
 		throw new InstallError(
 			`${problem}; it holds ${names.length ? `${shown}${more}` : 'nothing'}${commands.length ? `. Try: ${commands.join('; or ')}` : ''}`,
+			{suggestions},
 		);
 	}
 	if (pinned !== undefined) {

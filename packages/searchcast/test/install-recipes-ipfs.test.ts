@@ -170,7 +170,8 @@ afterEach(() => {
 
 const source = (dir: string) =>
 	JSON.parse(readFileSync(join(dir, '.source.json'), 'utf8'));
-const failure = (promise: Promise<unknown>) =>
+/** The InstallError an install was refused with (nothing installed). */
+const refused = (promise: Promise<unknown>) =>
 	promise.then(
 		() => {
 			throw new Error('expected a failure');
@@ -178,9 +179,15 @@ const failure = (promise: Promise<unknown>) =>
 		(error: unknown) => {
 			expect(error).toBeInstanceOf(InstallError);
 			expect((error as Error).message).toMatch(/Nothing was installed\.$/);
-			return (error as Error).message;
+			return error as InstallError;
 		},
 	);
+/** A refusal's message; every refusal but the not-a-set one has no suggestions. */
+const failure = (promise: Promise<unknown>) =>
+	refused(promise).then((error) => {
+		expect(error.suggestions).toBeUndefined();
+		return error.message;
+	});
 
 describe('installRecipes from ipfs://', () => {
 	it('installs a release archive by CID with no --sha256, recording the source, CID and gateway', async () => {
@@ -238,7 +245,7 @@ describe('installRecipes from ipfs://', () => {
 		const log: string[] = [];
 		const result = await installRecipes(at('my-set-1.2.0.tar.gz'), {
 			...options,
-			sha256: sha256(ARCHIVE).toUpperCase(),
+			sha256: sha256(ARCHIVE),
 			log: (line) => log.push(line),
 		});
 		expect(result.status).toBe('installed');
@@ -321,13 +328,18 @@ describe('installRecipes from ipfs://', () => {
 	it('refuses a release folder from its listing alone (one entity request per gateway, no file served), naming the commands to type', async () => {
 		local.routes.set(`/ipfs/${release}${query}`, {status: 429});
 		a.routes.set(`/ipfs/${release}${query}`, releaseCar);
-		const message = await failure(
+		const error = await refused(
 			installRecipes(`ipfs://${release}`, {
 				ipfsGateways: [local.url, a.url, b.url],
 				env,
 			}),
 		);
-		expect(message).toBe(
+		// The same suggestions as data, for an embedder to print its own command.
+		expect(error.suggestions).toEqual([
+			{source: `ipfs://${release}/x-1.0.0.tar.gz`, kind: 'archive'},
+			{source: `ipfs://${release}/x`, kind: 'set-directory'},
+		]);
+		expect(error.message).toBe(
 			`the directory entry "README.txt" is not a *.mjs, *.js or *.json file, so ipfs://${release} is not a recipe set directory; ` +
 				`it holds "README.txt", "x", "x-1.0.0.tar.gz", "x-1.0.0.tar.gz.sha256". ` +
 				`Try: searchcast install-recipes ipfs://${release}/x-1.0.0.tar.gz (a release archive); ` +
@@ -339,14 +351,23 @@ describe('installRecipes from ipfs://', () => {
 		expect(b.hits).toEqual([]); // a verified refusal is the same everywhere
 		// A --sha256 pins an archive: kept in the archive's command only.
 		a.hits.length = 0;
-		const pinned = await failure(
+		const pinned = await refused(
 			installRecipes(`ipfs://${release}`, {
 				ipfsGateways: [a.url],
 				sha256: sha256(ARCHIVE),
 				env,
 			}),
 		);
-		expect(pinned).toContain(
+		expect(pinned.suggestions).toEqual([
+			{
+				source: `ipfs://${release}/x-1.0.0.tar.gz`,
+				kind: 'archive',
+				sha256: sha256(ARCHIVE),
+			},
+			{source: `ipfs://${release}/x`, kind: 'set-directory'},
+		]);
+		expect(Object.isFrozen(pinned.suggestions)).toBe(true);
+		expect(pinned.message).toContain(
 			`searchcast install-recipes ipfs://${release}/x-1.0.0.tar.gz --sha256 ${sha256(ARCHIVE)} (a release archive); ` +
 				`or searchcast install-recipes ipfs://${release}/x (may be a set directory).`,
 		);
