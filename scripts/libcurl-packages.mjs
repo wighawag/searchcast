@@ -37,13 +37,13 @@ import {
 	existsSync,
 	lstatSync,
 	readFileSync,
-	realpathSync,
 	renameSync,
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {isMain} from './is-main.mjs';
 
 /**
  * The platforms with a package, `${process.platform}-${process.arch}` as keyed
@@ -226,13 +226,9 @@ export async function payloadProblems(dir, {release, modules} = {}) {
 	return problems;
 }
 
-// Compared through realpath: run through a symlink, the check must still run
-// (a guard that silently does nothing would let a pack through).
-const invokedDirectly =
-	process.argv[1] &&
-	realpathSync(resolve(process.argv[1])) ===
-		realpathSync(fileURLToPath(import.meta.url));
-if (invokedDirectly) {
+// Run directly, including through a symlink (scripts/is-main.mjs): a guard
+// that silently did nothing would read as "passed".
+if (isMain(import.meta.url)) {
 	const [command, ...args] = process.argv.slice(2);
 	const log = (line) => console.error(`libcurl-packages: ${line}`);
 	try {

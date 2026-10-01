@@ -20,6 +20,7 @@
 import {createRequire} from 'node:module';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './is-main.mjs';
 
 /** Major version of a semver string (`1.0.0-rc.1` is 1). */
 function major(version) {
@@ -116,10 +117,9 @@ export async function checkReleasePlan(root) {
 	return {ok: problems.length === 0, lines, releases};
 }
 
-const invokedDirectly =
-	process.argv[1] &&
-	resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (invokedDirectly) {
+// Run directly, including through a symlink (scripts/is-main.mjs): a guard
+// that silently did nothing would read as "passed".
+if (isMain(import.meta.url)) {
 	const root = process.argv[2]
 		? resolve(process.argv[2])
 		: dirname(dirname(fileURLToPath(import.meta.url)));
