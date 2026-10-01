@@ -6,8 +6,11 @@
 //
 // Each configured gateway is asked in order, through download.ts (the
 // caller's proxy only, proxy environment ignored, no https-to-http redirect,
-// a size cap), for `GET <gateway>/ipfs/<cid>[/<path>]?format=car&dag-scope=all`
-// with `accept: application/vnd.ipld.car`. Every block of the CAR is hashed
+// a size cap), for `GET <gateway>/ipfs/<cid>[/<path>]?format=car&dag-scope=entity`
+// with `accept: application/vnd.ipld.car`: the whole file for a file target
+// (one request), the listing only for a directory target, which is then
+// asked again with `dag-scope=all` once its listing is accepted (see the
+// decisions of task ipfs-install-folder-hint). Every block of the CAR is hashed
 // and checked against its CID (sha2-256 only; dag-pb and raw codecs only)
 // before any is used; `<path>` is then resolved from the ROOT CID through
 // verified dag-pb links, and the file (or each file of the directory) is
@@ -38,14 +41,16 @@
 //   each file would need one more request per file. For a file `all` and
 //   `entity` are the same blocks. One request per gateway is gentler on
 //   rate-limited public gateways. Alternative: `entity` plus a request per
-//   file.
+//   file. (SUPERSEDED by task ipfs-install-folder-hint, below: `entity`
+//   first, then ONE `all` request for a directory, not one per file.)
 // - Blocks are keyed by multihash, not by the CID they arrived under (a
 //   blockstore's identity), so a CIDv0 link finds a block a gateway sent
 //   under its CIDv1; the codec is always the LINK's, from verified bytes.
 // - Unused valid blocks are tolerated up to UNUSED_SLACK_BYTES (64 KiB):
 //   path-traversal blocks a gateway may add are used anyway; anything more is
 //   a gateway sending what was not asked, refused. Duplicate blocks (the
-//   CAR `dups` parameter) are not junk: the same verified bytes.
+//   CAR `dups` parameter) are not junk: the same verified bytes. (Since
+//   ipfs-install-folder-hint, "used" is the requested DAG: see below.)
 // - Directory listings are FLAT: a file entry (dag-pb UnixFS file or raw
 //   leaf) only. A nested directory, a symlink, a HAMT-sharded directory or
 //   metadata node is refused (recipe sets and release folders are flat and
@@ -69,6 +74,41 @@
 //   source, task install-recipes-from-ipfs) is how embedders reach it; only
 //   `DEFAULT_IPFS_GATEWAYS` is exported. Alternative: export `fetchIpfs` as a
 //   public API; deferred so no API is published without a user.
+//
+// Decisions (task ipfs-install-folder-hint, 2026-10-01):
+// - Two phases, so a directory that cannot be what the caller wants costs
+//   one small request: every gateway is first asked with
+//   `dag-scope=entity`. A file target is complete in that answer (spec
+//   2.2.2: the whole file), so it stays one request. A directory target's
+//   answer is its listing: its entry names (from its verified block, the
+//   path resolved from the root as always) go to the caller's
+//   `checkListing` callback, whose throw is the refusal (passed on
+//   unchanged, no other gateway asked: it follows from verified content).
+//   Only then is the SAME gateway asked with `dag-scope=all`.
+// - Where the check lives: in the caller (install-recipes.ts knows what a
+//   recipe set is), through the `checkListing` callback; this module stays
+//   generic and only knows UnixFS. Alternative: a two-phase API (`list`
+//   then `fetch`), which would make every caller drive the gateway loop and
+//   the "which gateway answered" state itself.
+// - Once a listing was verified and accepted, a later gateway (after the
+//   first one failed on the `all` request) is asked with `dag-scope=all`
+//   directly: the listing is the CID's, so it cannot differ. Alternative:
+//   restart at `entity` on each gateway (one more request each).
+// - A gateway that ignores `dag-scope=entity` (allowed: spec 2.2.2, it may
+//   return more) is not penalised: the blocks counted as used are the
+//   path's blocks plus EVERY block reachable from the target through links
+//   of blocks in the CAR (the requested DAG), so its extra blocks are not
+//   junk; and when its `entity` answer already holds every reachable block,
+//   the directory is rebuilt from it with no second request. Blocks outside
+//   the requested DAG (siblings, unrelated content) still count against the
+//   slack, in both phases. For an `all` answer this is the same set as
+//   before (rebuilding a flat directory visits every reachable block).
+//   Alternative: no slack in the `entity` phase (weaker: junk would pass).
+// - The slack is now checked before the content is rebuilt, so a CAR that
+//   is both junk-laden and refused for its content is a gateway failure
+//   (the next gateway is asked) rather than a refusal.
+// - The nested-directory refusal names the `ipfs://` path of that
+//   directory, to try it as a target itself.
 
 import {createHash} from 'node:crypto';
 import {CarBufferReader} from '@ipld/car/buffer-reader';
@@ -106,6 +146,13 @@ export interface FetchIpfsOptions {
 	maxBytes?: number;
 	/** Progress lines (which gateway is asked, why one failed). */
 	log?: (line: string) => void;
+	/**
+	 * Called once with a directory target's verified listing, after the
+	 * first (`dag-scope=entity`) request and before its files are fetched.
+	 * What it throws is the fetch's refusal, passed on unchanged, and no
+	 * other request is made. Not called for a file target.
+	 */
+	checkListing?: (listing: IpfsListing) => void;
 }
 
 export type IpfsContent =
@@ -178,6 +225,30 @@ export function parseIpfsUrl(source: string): {cid: CID; segments: string[]} {
 	return {cid, segments: decoded};
 }
 
+/** A directory target's verified listing, as `checkListing` is given it. */
+export interface IpfsListing {
+	/** The source, as given. */
+	source: string;
+	/** The root CID. */
+	cid: string;
+	/** The directory's path below the root CID, as decoded segments. */
+	segments: readonly string[];
+	/** The directory's entry names, from its VERIFIED block only, sorted. */
+	names: readonly string[];
+}
+
+/** `ipfs://<cid>/<segments>`, each segment percent-encoded (what parseIpfsUrl reads back). */
+export function ipfsUrl(cid: string, segments: readonly string[]): string {
+	return `ipfs://${[cid, ...segments.map(encodeURIComponent)].join('/')}`;
+}
+
+/** What a `checkListing` callback threw: the fetch's refusal, passed on unchanged. */
+class Refusal extends Error {
+	constructor(readonly refusal: unknown) {
+		super('refused by checkListing');
+	}
+}
+
 /** The UnixFS file or flat directory at `ipfs://<cid>[/<path>]`, verified against the CID. */
 export async function fetchIpfs(
 	source: string,
@@ -202,21 +273,61 @@ export async function fetchIpfs(
 	const path = segments.map(encodeURIComponent).join('/');
 	const via = options.proxy ? ` via ${describeProxy(options.proxy)}` : '';
 	const reasons: string[] = [];
+	// Whether a directory target's listing was verified (and accepted by
+	// checkListing): it is the same from every gateway, so the next one is
+	// asked for the whole DAG at once.
+	let listed = false;
 	for (const gateway of gateways) {
-		const url = `${gateway}/ipfs/${cid}${path ? `/${path}` : ''}?format=car&dag-scope=all`;
-		log(`fetching ${url}${via}`);
-		let car: Buffer;
+		let scope: 'entity' | 'all' = listed ? 'all' : 'entity';
 		try {
-			({body: car} = await download(url, {
-				proxy: options.proxy,
-				maxBytes: maxCarBytes,
-				idleTimeoutMs: IDLE_TIMEOUT_MS,
-				accept: CAR,
-			}));
-			const content = verified(car, cid, segments, maxBytes);
-			log(`verified ${source} against its CID (from ${gateway})`);
-			return {cid: cid.toString(), path: segments.join('/'), gateway, content};
+			for (;;) {
+				const url = `${gateway}/ipfs/${cid}${path ? `/${path}` : ''}?format=car&dag-scope=${scope}`;
+				log(`fetching ${url}${via}`);
+				const {body: car} = await download(url, {
+					proxy: options.proxy,
+					maxBytes: maxCarBytes,
+					idleTimeoutMs: IDLE_TIMEOUT_MS,
+					accept: CAR,
+				});
+				const dag = verified(car, cid, segments, maxBytes);
+				let content: IpfsContent | undefined;
+				if (dag.type === 'file') {
+					content = {type: 'file', bytes: dag.file()};
+				} else {
+					const names = dag.names();
+					if (!listed) {
+						try {
+							options.checkListing?.({
+								source,
+								cid: cid.toString(),
+								segments,
+								names,
+							});
+						} catch (refusal) {
+							throw new Refusal(refusal);
+						}
+						listed = true;
+					}
+					// An `all` answer, or an `entity` answer from a gateway that
+					// sent more (the spec allows it): every block is here.
+					if (scope === 'all' || dag.complete) {
+						content = {type: 'directory', files: dag.files()};
+					}
+				}
+				if (content) {
+					log(`verified ${source} against its CID (from ${gateway})`);
+					return {
+						cid: cid.toString(),
+						path: segments.join('/'),
+						gateway,
+						content,
+					};
+				}
+				log(`listed ${source} (from ${gateway}); fetching its files`);
+				scope = 'all';
+			}
 		} catch (error) {
+			if (error instanceof Refusal) throw error.refusal;
 			if (error instanceof InstallError) {
 				throw new InstallError(`${source}: ${error.message}`, {cause: error});
 			}
@@ -280,17 +391,31 @@ type Node = {raw: Buffer} | {pb: dagPb.PBNode; unixfs: UnixFS};
 const kind = (n: Node): string =>
 	'raw' in n || n.unixfs.type === 'raw' ? 'file' : n.unixfs.type;
 
+/** `root`/`segments` resolved in a verified CAR. */
+interface VerifiedDag {
+	type: 'file' | 'directory';
+	/** Whether every block reachable from the target is in the CAR. */
+	complete: boolean;
+	/** The file's bytes (type `file`). */
+	file(): Buffer;
+	/** The directory's entry names, sorted (type `directory`; its block only). */
+	names(): string[];
+	/** The directory's files by name, sorted (type `directory`; every block). */
+	files(): Map<string, Buffer>;
+}
+
 /**
- * The content of `root`/`segments` in `car`: a GatewayError when the CAR is
- * not the CID's (the next gateway may serve it right), an InstallError when
- * the verified content itself is refused.
+ * `root`/`segments` in `car`: a GatewayError when the CAR is not the CID's
+ * (the next gateway may serve it right), an InstallError when the verified
+ * content itself is refused. Blocks that are neither on the path nor
+ * reachable from the target count against UNUSED_SLACK_BYTES.
  */
 function verified(
 	car: Buffer,
 	root: CID,
 	segments: string[],
 	maxBytes: number,
-): IpfsContent {
+): VerifiedDag {
 	let reader: CarBufferReader;
 	try {
 		reader = CarBufferReader.fromBytes(car);
@@ -404,7 +529,7 @@ function verified(
 			}
 			links.set(name, link.Hash);
 		}
-		return links;
+		return new Map([...links].sort(([a], [b]) => (a < b ? -1 : 1)));
 	};
 
 	let cid = root;
@@ -416,32 +541,62 @@ function verified(
 		}
 		cid = next;
 	}
-	const terminus = node(cid);
-	let content: IpfsContent;
-	if (kind(terminus) === 'file') {
-		content = {type: 'file', bytes: file(cid, terminus)};
-	} else {
-		const files = new Map<string, Buffer>();
-		const links = [...entries(cid, terminus)].sort(([a], [b]) =>
-			a < b ? -1 : 1,
-		);
-		for (const [name, link] of links) {
-			const entry = node(link);
-			if (kind(entry) !== 'file') {
-				throw new InstallError(
-					`${cid}/${name} is a ${kind(entry)}; only files are read from a directory`,
-				);
-			}
-			files.set(name, file(link, entry));
+	const target = cid;
+	const terminus = node(target);
+
+	// The blocks reachable from the target through the links of blocks in
+	// the CAR (whatever they are; the content checks come later), and
+	// whether any is missing. With the path's blocks they are the requested
+	// DAG; anything else is junk, tolerated up to the slack.
+	const reachable = new Set<string>([key(target)]);
+	let missing = 0;
+	const queue = [target];
+	while (queue.length) {
+		const bytes = blocks.get(key(queue.pop()!))!;
+		let links: dagPb.PBLink[] = [];
+		try {
+			links = dagPb.decode(bytes).Links;
+		} catch {
+			// a raw leaf, or not dag-pb: no links to follow
 		}
-		content = {type: 'directory', files};
+		for (const {Hash} of links) {
+			const k = key(Hash);
+			if (reachable.has(k)) continue;
+			if (!blocks.has(k)) {
+				missing++;
+				continue;
+			}
+			reachable.add(k);
+			queue.push(Hash);
+		}
 	}
 	let unused = 0;
-	for (const [k, bytes] of blocks) if (!used.has(k)) unused += bytes.length;
+	for (const [k, bytes] of blocks) {
+		if (!used.has(k) && !reachable.has(k)) unused += bytes.length;
+	}
 	if (unused > UNUSED_SLACK_BYTES) {
 		throw new GatewayError(
 			`the CAR holds ${unused} bytes of blocks that are not part of the content (at most ${UNUSED_SLACK_BYTES})`,
 		);
 	}
-	return content;
+
+	return {
+		type: kind(terminus) === 'file' ? 'file' : 'directory',
+		complete: missing === 0,
+		file: () => file(target, terminus),
+		names: () => [...entries(target, terminus).keys()],
+		files: () => {
+			const files = new Map<string, Buffer>();
+			for (const [name, link] of entries(target, terminus)) {
+				const entry = node(link);
+				if (kind(entry) !== 'file') {
+					throw new InstallError(
+						`${target}/${name} is a ${kind(entry)}; only files are read from a directory (to read it, use ${ipfsUrl(root.toString(), [...segments, name])})`,
+					);
+				}
+				files.set(name, file(link, entry));
+			}
+			return files;
+		},
+	};
 }

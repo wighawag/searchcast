@@ -3,6 +3,7 @@
 // http://127.0.0.1 standing in for a local node; ipfs-gateway.ts). The CARs
 // are built here from in-test files with the same IPFS libraries. No network.
 
+import {randomBytes} from 'node:crypto';
 import * as dagPb from '@ipld/dag-pb';
 import {UnixFS} from 'ipfs-unixfs';
 import {CID} from 'multiformats/cid';
@@ -29,6 +30,7 @@ import {
 import {startConnectProxy} from './servers.js';
 
 const query = '?format=car&dag-scope=all';
+const entity = '?format=car&dag-scope=entity';
 const RECIPE = Buffer.from(
 	'{"name": "web", "padding": "' + 'x'.repeat(150) + '"}\n',
 );
@@ -73,6 +75,7 @@ afterEach(() => {
 	for (const g of [a, b]) {
 		g.hits.length = 0;
 		g.routes.clear();
+		g.ignoreScope = false;
 	}
 });
 
@@ -102,10 +105,138 @@ describe('fetchIpfs', () => {
 			gateway: a.url,
 			content: {type: 'file', bytes: RECIPE},
 		});
+		// One request: `entity` is the whole file.
 		expect(a.hits).toEqual([
-			{url: `/ipfs/${web}${query}`, accept: 'application/vnd.ipld.car'},
+			{
+				url: `/ipfs/${web}${entity}`,
+				accept: 'application/vnd.ipld.car',
+				blocks: fileBlocks.map((x) => x.cid.toString()),
+			},
 		]);
 		expect(lines.join('\n')).toMatch(/verified ipfs:\/\/\S+ against its CID/);
+	});
+
+	it('fetches a directory in two requests to the same gateway: its listing (entity), then its files (all)', async () => {
+		a.routes.set(`/ipfs/${set}${query}`, await car([set], setBlocks));
+		const listings: unknown[] = [];
+		const {lines, log} = logger();
+		const result = await fetchIpfs(`ipfs://${set}`, {
+			ipfsGateways: gateways(),
+			checkListing: (listing) => void listings.push(listing),
+			log,
+		});
+		expect(result.gateway).toBe(a.url);
+		expect(a.hits.map((h) => h.url)).toEqual([
+			`/ipfs/${set}${entity}`,
+			`/ipfs/${set}${query}`,
+		]);
+		expect(a.hits[0]!.blocks).toEqual([set.toString()]); // the listing only
+		expect(listings).toEqual([
+			{
+				source: `ipfs://${set}`,
+				cid: set.toString(),
+				segments: [],
+				names: ['api.mjs', 'manifest.json', 'web.json'],
+			},
+		]);
+		expect(lines.join('\n')).toContain(`listed ipfs://${set} (from ${a.url})`);
+		expect(b.hits).toEqual([]);
+	});
+
+	it('passes what checkListing throws on unchanged, after the listing request only, asking no other gateway', async () => {
+		a.routes.set(`/ipfs/${root}${query}`, await car([root], dag.blocks));
+		const refusal = new InstallError('not wanted');
+		let seen: unknown;
+		const error = await fetchIpfs(`ipfs://${root}`, {
+			ipfsGateways: gateways(),
+			checkListing: (listing) => {
+				seen = listing;
+				throw refusal;
+			},
+		}).catch((e: unknown) => e);
+		expect(error).toBe(refusal);
+		expect(seen).toMatchObject({
+			cid: root.toString(),
+			names: ['README.txt', 'set'],
+		});
+		expect(a.hits.map((h) => h.url)).toEqual([`/ipfs/${root}${entity}`]);
+		expect(a.hits[0]!.blocks).toEqual([root.toString()]);
+		expect(b.hits).toEqual([]);
+		// Not called for a file target.
+		a.routes.set(
+			`/ipfs/${root}/README.txt${query}`,
+			await car([root], dag.blocks),
+		);
+		const file = await fetchIpfs(`ipfs://${root}/README.txt`, {
+			ipfsGateways: [a.url],
+			checkListing: () => {
+				throw refusal;
+			},
+		});
+		expect(file.content).toEqual({type: 'file', bytes: Buffer.from('hello\n')});
+	});
+
+	it('after a verified listing, asks the next gateway for the whole DAG directly when the first fails it', async () => {
+		a.routes.set(`/ipfs/${set}${entity}`, await car([set], [block(set)]));
+		a.routes.set(`/ipfs/${set}${query}`, {status: 429});
+		b.routes.set(`/ipfs/${set}${query}`, await car([set], setBlocks));
+		let listings = 0;
+		const result = await fetchIpfs(`ipfs://${set}`, {
+			ipfsGateways: gateways(),
+			checkListing: () => void listings++,
+		});
+		expect(result.gateway).toBe(b.url);
+		expect(listings).toBe(1);
+		expect(a.hits.map((h) => h.url)).toEqual([
+			`/ipfs/${set}${entity}`,
+			`/ipfs/${set}${query}`,
+		]);
+		expect(b.hits.map((h) => h.url)).toEqual([`/ipfs/${set}${query}`]);
+	});
+
+	it('takes a gateway that ignores dag-scope=entity: its whole DAG is not junk, and needs no second request', async () => {
+		// A directory whose files are far above the slack.
+		const big = new Dag();
+		const body = Buffer.alloc(UNUSED_SLACK_BYTES * 2, 7);
+		const dir = await big.dir({
+			'manifest.json': await big.file(MANIFEST),
+			'big.json': await big.file(body, 4096),
+		});
+		const bigBlocks = [...big.blocks];
+		a.ignoreScope = true;
+		a.routes.set(`/ipfs/${dir}${query}`, await car([dir], bigBlocks));
+		let listings = 0;
+		const {content} = await fetchIpfs(`ipfs://${dir}`, {
+			ipfsGateways: [a.url],
+			checkListing: () => void listings++,
+		});
+		expect(
+			content.type === 'directory' && content.files.get('big.json'),
+		).toEqual(body);
+		expect(listings).toBe(1);
+		expect(a.hits.map((h) => h.url)).toEqual([`/ipfs/${dir}${entity}`]);
+		// Blocks outside the requested DAG are still junk beyond the slack.
+		const junk = new Dag();
+		await junk.put(RAW, Buffer.alloc(UNUSED_SLACK_BYTES + 1, 1));
+		a.routes.set(
+			`/ipfs/${dir}${query}`,
+			await car([dir], [...bigBlocks, ...junk.blocks]),
+		);
+		await expect(
+			fetchIpfs(`ipfs://${dir}`, {ipfsGateways: [a.url]}),
+		).rejects.toThrow(/bytes of blocks that are not part of the content/);
+		// And so are a sibling's blocks, when the target is below the root.
+		const parent = await big.dir({
+			dir,
+			'other.json': await big.file(randomBytes(UNUSED_SLACK_BYTES + 1), 4096),
+		});
+		a.routes.set(
+			`/ipfs/${parent}/dir${query}`,
+			await car([parent], big.blocks),
+		);
+		await expect(
+			fetchIpfs(`ipfs://${parent}/dir`, {ipfsGateways: [a.url]}),
+		).rejects.toThrow(/bytes of blocks that are not part of the content/);
 	});
 
 	it('fetches a directory: every file reassembled from verified blocks, sorted by name', async () => {
@@ -288,8 +419,8 @@ describe('fetchIpfs', () => {
 		expect(error).toBeInstanceOf(InstallError);
 		expect((error as Error).message).toBe(
 			`no gateway served ipfs://${set} verified against its CID: ` +
-				`${a.url}: GET ${a.url}/ipfs/${set}${query}: HTTP 429; ` +
-				`${b.url}: GET ${b.url}/ipfs/${set}${query}: HTTP 404`,
+				`${a.url}: GET ${a.url}/ipfs/${set}${entity}: HTTP 429; ` +
+				`${b.url}: GET ${b.url}/ipfs/${set}${entity}: HTTP 404`,
 		);
 	});
 
@@ -304,8 +435,10 @@ describe('fetchIpfs', () => {
 				proxy: `http://127.0.0.1:${proxy.port}`,
 				log,
 			});
+			// a's `entity` (429), then b's `entity` and `all` (a directory).
 			expect(proxy.requests).toEqual([
 				{host: 'localhost', port: Number(new URL(a.url).port)},
+				{host: 'localhost', port: Number(new URL(b.url).port)},
 				{host: 'localhost', port: Number(new URL(b.url).port)},
 			]);
 			expect(lines[0]).toMatch(/via http:\/\/127\.0\.0\.1:\d+$/);
@@ -355,7 +488,7 @@ describe('fetchIpfs', () => {
 		await expect(
 			fetchIpfs(`ipfs://${root}`, {ipfsGateways: gateways()}),
 		).rejects.toThrow(
-			`${root}/set is a directory; only files are read from a directory`,
+			`${root}/set is a directory; only files are read from a directory (to read it, use ipfs://${root}/set)`,
 		);
 		// A path through a file.
 		a.routes.set(`/ipfs/${web}/x${query}`, await car([web], setBlocks));

@@ -57,7 +57,8 @@
 //   archives.
 // - `--sha256` with an IPFS DIRECTORY is refused (before anything is
 //   written, after the fetch, since only the content says it is a
-//   directory): there are no archive bytes to compare, and silently ignoring
+//   directory; since ipfs-install-folder-hint, after the listing request,
+//   before the files are fetched): there are no archive bytes to compare, and silently ignoring
 //   a pin the user typed would let them believe it was checked.
 //   Alternative: ignore it, or hash some canonical listing (a format of our
 //   own that no publisher would ship).
@@ -75,6 +76,33 @@
 //   optional in `RecipeSetSource`), and there is no `url`.
 // - `DEFAULT_IPFS_GATEWAYS` is exported from `searchcast/install`, so an
 //   embedder can add its own gateway in front of the defaults.
+//
+// Decisions (task ipfs-install-folder-hint, 2026-10-01):
+// - An IPFS directory is judged from its verified LISTING (ipfs.ts'
+//   `checkListing`, after one `dag-scope=entity` request) before any file is
+//   fetched: the name rules and the required `manifest.json`
+//   (recipe-archive.ts `recipeDirectoryProblem`, the same rules
+//   `recipeDirectoryFiles` still applies to the fetched files), then the
+//   `--sha256` refusal. When both apply, the not-a-set refusal wins: it is
+//   the more useful message, and its archive suggestion keeps the pin.
+// - The not-a-set refusal lists the directory's entries (at most 20, each
+//   JSON-quoted so no name can forge a line, then "and N more") and up to 6
+//   commands to try, built from verified names only (percent-encoded in the
+//   URL): `searchcast install-recipes ipfs://<cid>/<path>/<entry>` for each
+//   `*.tar.gz` entry (with `--sha256 <hex>` when one was given), then for
+//   each entry that may be a set directory. The commands name the CLI even
+//   through the API (`searchcast/install`): an embedder shows the URL to
+//   use; the other options the user gave (`--ipfs-gateway`, `--proxy`,
+//   `--name`, `--dir`) are not repeated, so the command stays short.
+//   Alternative: repeat every option given (long, and wrong for an API).
+// - "May be a set directory" is a name that is not hidden, not `*.tar.gz`
+//   and has no file extension (a '.' then a letter and up to 9 letters or
+//   digits): `x` and `my-set-1.2.0` may be, `README.txt` and
+//   `x.tar.gz.sha256` may not. The task's literal "no recipe file
+//   extension" would also suggest `README.txt` and the `.sha256` file as set
+//   directories; the listing cannot say which entries ARE directories (only
+//   their own blocks, not fetched, would), so this is a hint and the
+//   entries are listed anyway. Alternative: the literal reading.
 
 import {createHash} from 'node:crypto';
 import {
@@ -90,7 +118,7 @@ import {
 import {join, resolve} from 'node:path';
 import {describeProxy, download} from './download.js';
 import {InstallError} from './install.js';
-import {fetchIpfs} from './ipfs.js';
+import {fetchIpfs, ipfsUrl, type IpfsListing} from './ipfs.js';
 import {checkNumber} from './options.js';
 import {recipesDir, SOURCE_FILE, type RecipeSetSource} from './recipes.js';
 import {
@@ -98,6 +126,7 @@ import {
 	MAX_UNPACKED_BYTES,
 	readManifest,
 	recipeDirectoryFiles,
+	recipeDirectoryProblem,
 	recipeFiles,
 	setName,
 } from './recipe-archive.js';
@@ -177,7 +206,7 @@ export async function installRecipes(
 	if (options.name !== undefined) setName(options.name, '--name');
 	const limits = {maxArchiveBytes, maxUnpackedBytes};
 	const got: Fetched = ipfs
-		? await fetchFromIpfs(source, options, limits, log)
+		? await fetchFromIpfs(source, options, limits, pinned, log)
 		: {archive: await fetchArchive(source, options, maxArchiveBytes, log)};
 	let files: Map<string, Buffer>;
 	let sha256: string | undefined;
@@ -285,6 +314,7 @@ async function fetchFromIpfs(
 	source: string,
 	options: InstallRecipesOptions,
 	limits: {maxArchiveBytes: number; maxUnpackedBytes: number},
+	pinned: string | undefined,
 	log: (line: string) => void,
 ): Promise<Fetched> {
 	let fetched;
@@ -295,6 +325,7 @@ async function fetchFromIpfs(
 			maxCarBytes: limits.maxArchiveBytes,
 			maxBytes: limits.maxUnpackedBytes,
 			log,
+			checkListing: (listing) => checkSetListing(listing, pinned),
 		});
 	} catch (cause) {
 		if (!(cause instanceof InstallError)) throw cause;
@@ -309,6 +340,65 @@ async function fetchFromIpfs(
 		);
 	}
 	return {archive: {body: content.bytes}, ipfs};
+}
+
+const LISTED_ENTRIES = 20;
+const SUGGESTED_COMMANDS = 6;
+
+/**
+ * Refuse an IPFS directory from its verified listing, before its files are
+ * fetched: one that cannot be a recipe set (naming its entries and the
+ * commands to try instead), or any directory when --sha256 was given.
+ */
+function checkSetListing(listing: IpfsListing, pinned: string | undefined) {
+	const {source, cid, segments, names} = listing;
+	const problem = recipeDirectoryProblem(names, source);
+	if (problem) {
+		const shown = names
+			.slice(0, LISTED_ENTRIES)
+			.map((name) => JSON.stringify(name))
+			.join(', ');
+		const more =
+			names.length > LISTED_ENTRIES
+				? ` and ${names.length - LISTED_ENTRIES} more`
+				: '';
+		const command = (name: string) =>
+			`searchcast install-recipes ${ipfsUrl(cid, [...segments, name])}`;
+		const commands = [
+			...names
+				.filter((name) => name.endsWith('.tar.gz') && !name.startsWith('.'))
+				.map(
+					(name) =>
+						`${command(name)}${pinned !== undefined ? ` --sha256 ${pinned}` : ''} (a release archive)`,
+				),
+			...names
+				.filter(maybeSetDirectory)
+				.map((name) => `${command(name)} (may be a set directory)`),
+		].slice(0, SUGGESTED_COMMANDS);
+		throw new InstallError(
+			`${problem}; it holds ${names.length ? `${shown}${more}` : 'nothing'}${commands.length ? `. Try: ${commands.join('; or ')}` : ''}`,
+		);
+	}
+	if (pinned !== undefined) {
+		throw new InstallError(
+			`--sha256 pins an archive's bytes, and ${source} is a directory (the CID pins it): leave --sha256 out`,
+		);
+	}
+}
+
+/**
+ * Whether a directory entry's name may be a set directory's: not hidden, not
+ * a recipe file or an archive, and no file extension (a '.' then a letter
+ * and up to 9 letters or digits), so `my-set-1.2.0` may be and `README.txt`
+ * or `x.tar.gz.sha256` may not. The listing does not say which entries are
+ * directories (only their own blocks would), so this is a hint.
+ */
+function maybeSetDirectory(name: string): boolean {
+	return (
+		!name.startsWith('.') &&
+		!name.endsWith('.tar.gz') &&
+		!/\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name)
+	);
 }
 
 /** The archive's bytes, and the final URL for a download. */
