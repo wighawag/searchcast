@@ -1,0 +1,13 @@
+// The type check of the tests (`pnpm typecheck`, run by the root `pnpm test`):
+// vitest strips types without checking them, so without this a type error in
+// test/ (a failing `expectTypeOf` included) would pass. Nothing is emitted.
+// rootDir is the repo root because tests may import another package's test
+// helpers (searchcast's serve test uses packages/browser/test/fixture.ts).
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "../..",
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "test/**/*.ts"]
+}

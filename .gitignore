@@ -17,3 +17,7 @@ vitest-report.json
 # `node scripts/libcurl-packages.mjs build` in CI; never committed.
 packages/libcurl-*/libcurl-impersonate.*
 packages/libcurl-*/.payload.json
+
+# The throwaway fixture of packages/searchcast/test/typecheck.test.ts (removed
+# after each run; ignored in case a run is cut short).
+packages/searchcast/.typecheck-bite-*/

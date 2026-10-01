@@ -13,10 +13,10 @@ import {
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-// @ts-expect-error - plain .mjs script, no types
 import {
 	checkReleasePlan,
 	releasePlanProblems,
+	// @ts-expect-error - plain .mjs script, no types
 } from '../../../scripts/release-plan.mjs';
 
 const repo = resolve(import.meta.dirname, '..', '..', '..');

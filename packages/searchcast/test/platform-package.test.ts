@@ -188,7 +188,12 @@ describe.runIf(PINNED)('locateLibrary and the platform package', () => {
 	});
 
 	it('names the platform package and install-libcurl when there is no library', async () => {
-		const error = await loadLibcurl(undefined).catch((e: Error) => e);
+		const error = await loadLibcurl(undefined).then(
+			() => {
+				throw new Error('expected loadLibcurl to fail');
+			},
+			(e: Error) => e,
+		);
 		expect(error.message).toContain(
 			`npm installs it with searchcast as the optional dependency ${platformPackageName(PLATFORM)}`,
 		);
