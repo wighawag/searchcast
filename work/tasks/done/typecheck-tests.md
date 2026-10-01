@@ -30,3 +30,9 @@ Goal: the type-level tests (deprecated aliases, recipe types) actually guard som
 - Public repo: no real search engine named (placeholders), except the owner-approved Marginalia and Mwmbl examples.
 - No em dashes anywhere; do not hard-wrap Markdown paragraphs.
 - Bound shell commands (`timeout`), cap output, never grep `node_modules`, `dist` or `.git`. No network in tests.
+
+## Decisions
+
+1. **`rootDir` is the repo root (`../..`) in every `tsconfig.test.json`.** Why: `searchcast`'s `serve.test.ts` imports `packages/browser/test/fixture.ts`, which is outside the package. The alternatives were rearranging the test helpers, or using this setting only in `searchcast`; I kept the three configs identical. It only affects the test check, since the build configs are unchanged and nothing is emitted. This is recorded in the header comment of each `tsconfig.test.json`.
+2. **The type check is its own `typecheck` step, not vitest's built-in type-check mode.** Why: it's plain `tsc`, as the task suggested, and it fails fast before any test runs. The alternative was vitest's mode, which would also have changed how the "no skipped tests" check reads the test reports. This is recorded in the header comment of `test/typecheck.test.ts`.
+3. **The fixture is written to a temporary folder inside `packages/searchcast`, outside `test/`.** Why: from there `vitest` and `../src` resolve exactly as they do for real tests, and a leftover folder can never be picked up by the `test/**` check. The alternative, the system temp folder, can't resolve those imports. This is recorded in a comment in `test/typecheck.test.ts` and in `.gitignore`.

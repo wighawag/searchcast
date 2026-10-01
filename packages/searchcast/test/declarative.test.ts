@@ -312,10 +312,12 @@ describe('aborting between redirect hops', () => {
 				options.signal?.throwIfAborted();
 				const headers = new Headers({location: 'https://example.test/next'});
 				const get = headers.get.bind(headers);
-				headers.get = (name: string) => {
-					if (name === 'location') between();
-					return get(name);
-				};
+				Object.assign(headers, {
+					get: (name: string) => {
+						if (name === 'location') between();
+						return get(name);
+					},
+				});
 				return {
 					url,
 					status: 302,

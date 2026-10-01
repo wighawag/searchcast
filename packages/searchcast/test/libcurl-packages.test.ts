@@ -263,14 +263,20 @@ describe('building a platform package', () => {
 		copyPackage('linux-x64');
 		copyPackage('darwin-arm64');
 		const before = tree(root);
-		const release = pinned('good.tar.gz', sha256(good), [
+		const verified = pinned('good.tar.gz', sha256(good), [
 			'linux-x64',
 			'darwin-arm64',
 		]);
-		release.assets['darwin-arm64'] = {
-			archive: 'junk.tar.gz',
-			sha256: sha256(good),
-			library: LIBRARY,
+		const release = {
+			...verified,
+			assets: {
+				...verified.assets,
+				'darwin-arm64': {
+					archive: 'junk.tar.gz',
+					sha256: sha256(good),
+					library: LIBRARY,
+				},
+			},
 		};
 		await expect(buildLibcurlPackages({root, release})).rejects.toThrow(
 			/checksum mismatch for junk\.tar\.gz/,

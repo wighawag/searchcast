@@ -15,7 +15,6 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-// @ts-expect-error - plain .mjs script, no types
 import {
 	copyPublishAssets,
 	GITHUB_REPO,
@@ -23,6 +22,7 @@ import {
 	repoRoot,
 	resolvePinRef,
 	rewriteReadmeLinks,
+	// @ts-expect-error - plain .mjs script, no types
 } from '../../../scripts/copy-publish-assets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));

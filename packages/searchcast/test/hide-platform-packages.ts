@@ -23,5 +23,11 @@ export function hidingPlatformPackages(
 		return Object.assign(require, {resolve});
 	};
 	const hiding = {...mod, createRequire} as typeof import('node:module');
-	return {...hiding, default: hiding} as typeof import('node:module');
+	// `typeof import('node:module')` is the `export =` class of @types/node,
+	// constructible; a spread namespace object is not, so it goes through
+	// unknown. The runtime shape is the module namespace, as `original()` gives.
+	return {
+		...hiding,
+		default: hiding,
+	} as unknown as typeof import('node:module');
 }

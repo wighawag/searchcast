@@ -10,6 +10,7 @@ import {
 	IMPERSONATE_TARGET,
 	REQUEST_KINDS,
 	SearchcastError,
+	type RequestOptions,
 } from '../src/index.js';
 import {
 	CA_PATH,
@@ -118,7 +119,9 @@ describe.skipIf(!LIB)('transport (native libcurl-impersonate)', () => {
 		'sends exactly the captured %s table for a %s request (from %s)',
 		async (kind, site, referer) => {
 			const path = `/site/${kind}/${site}/${encodeURIComponent(referer)}`;
-			await transport.session().request(url(path), {kind, referer});
+			const options: RequestOptions =
+				kind === 'fetch' ? {kind, referer} : {kind, referer};
+			await transport.session().request(url(path), options);
 			const {origin} = new URL(referer);
 			const wire = seen.get(path)!;
 			expect(wire.slice(8)).toEqual(
