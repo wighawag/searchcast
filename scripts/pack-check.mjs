@@ -35,13 +35,14 @@
 
 import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
 	LIBCURL_PLATFORMS,
 	packageName,
 	payloadFile,
 } from './libcurl-packages.mjs';
+import {isMain} from './is-main.mjs';
 
 /**
  * The compiled output: JavaScript and declarations. No source or declaration
@@ -260,10 +261,9 @@ export function checkAll(
 	return {ok, lines};
 }
 
-const invokedDirectly =
-	process.argv[1] &&
-	resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (invokedDirectly) {
+// Run directly, including through a symlink (scripts/is-main.mjs): a guard
+// that silently did nothing would read as "passed".
+if (isMain(import.meta.url)) {
 	const root = dirname(dirname(fileURLToPath(import.meta.url)));
 	const args = process.argv.slice(2);
 	const unknown = args.filter((a) => a !== '--require-payloads');

@@ -13,6 +13,7 @@
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './is-main.mjs';
 
 export const REPORT = 'vitest-report.json';
 
@@ -67,10 +68,9 @@ export function checkReports(root, allowed = ALLOWED_SKIPS) {
 	return {ok, lines};
 }
 
-const invokedDirectly =
-	process.argv[1] &&
-	resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (invokedDirectly) {
+// Run directly, including through a symlink (scripts/is-main.mjs): a guard
+// that silently did nothing would read as "passed".
+if (isMain(import.meta.url)) {
 	const root = process.argv[2]
 		? resolve(process.argv[2])
 		: dirname(dirname(fileURLToPath(import.meta.url)));

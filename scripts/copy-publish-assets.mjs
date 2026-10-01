@@ -18,6 +18,7 @@ import {copyFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './is-main.mjs';
 
 // Assets copied into each package, relative to the repo root.
 export const PUBLISH_ASSETS = ['README.md', 'LICENSE'];
@@ -162,10 +163,9 @@ export function copyPublishAssets({
 }
 
 // Run directly (e.g. from a package's `prepack`): cwd is the package dir.
-const invokedDirectly =
-	process.argv[1] &&
-	resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (invokedDirectly) {
+// Including through a symlink (scripts/is-main.mjs): a prepack step that
+// silently did nothing would publish without the README and LICENSE.
+if (isMain(import.meta.url)) {
 	const written = copyPublishAssets();
 	for (const dest of written) {
 		console.log(`copy-publish-assets: wrote ${relative(repoRoot(), dest)}`);

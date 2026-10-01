@@ -29,3 +29,10 @@ Goal: a release guard can never silently skip itself. FIRST, check this task aga
 - Public repo: no real search engine named (placeholders), except the owner-approved Marginalia and Mwmbl examples.
 - No em dashes anywhere; do not hard-wrap Markdown paragraphs.
 - Bound shell commands (`timeout`), cap output, never grep `node_modules`, `dist` or `.git`. No network in tests.
+
+## Decisions
+
+1. **If the invoked path can't be resolved, fall back to the old plain comparison rather than throwing.** This covers cases like `node -e`. A merely imported module never matches either way, so it isn't a new way to skip, and it avoids a new error when another module imports a script. The alternative was a hard error. Recorded in the comment at the top of `scripts/is-main.mjs`; it affects only these scripts.
+2. **`pack-check` and `copy-publish-assets` are tested with a refusal, not a failing fixture.** Both always work on the repo that holds the real script, so a temp fixture can't stand in for it. An unknown argument and a write outside the repo each prove the CLI ran without packing or writing anything. Recorded in comments in the test file.
+
+Please link these from the done record.
