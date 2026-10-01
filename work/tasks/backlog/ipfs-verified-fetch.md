@@ -37,6 +37,8 @@ Goal: content addressed by CID is installed only if it IS that CID, whoever serv
 
 FIRST, check this task against current reality. RECORD non-obvious in-scope decisions.
 
+> FORWARD-NOTE (conductor, 2026-10-01): public IPFS gateways rate-limited this machine's shared IP with 429 earlier today. Make NO live network request in this build: neither the gateway survey nor the private-CID check above. The conductor runs the live check itself after the release. Pick the default gateway list from the trustless gateway spec and the gateways' own public documentation, and say in the PR and in the code comment that the list was not live-verified in this build. The private set's content must never appear in this repo, its tests, the PR or any log.
+
 ## Rules for this build
 
 - No package version edits; no changeset unless a published package's content changes (state it in the PR if none).
