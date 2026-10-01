@@ -1,5 +1,15 @@
 # searchcast
 
+## 0.4.0
+
+### Minor Changes
+
+- 11ccc62: `searchcast install-recipes ipfs://<cid>[/<path>]` installs a recipe set from IPFS, a release archive or a set directory (a `manifest.json` and recipe files), with no `--sha256`: the CID is the pin. The content is fetched as a CAR from trustless gateways over HTTPS, through `--proxy` like every other install (no daemon, no peer-to-peer traffic), and every block is verified against the CID before anything is unpacked; a gateway that is rate-limited or serves wrong blocks is skipped for the next. `--ipfs-gateway <url>` (repeatable) replaces the default gateways (`https://` or a local node on loopback). A `--sha256` given for an IPFS archive must also match, and is refused for a directory. `.source.json` and `recipes list` record the `ipfs://` source, its CID and the gateway. In `searchcast/install`, `installRecipes` takes `ipfs://` sources and an `ipfsGateways` option, its `sha256` is optional for them, `RecipeSetSource` gains `cid` and `gateway` (its `sha256` is now optional, absent for an IPFS directory), and `DEFAULT_IPFS_GATEWAYS` is exported.
+
+### Patch Changes
+
+- 0295e81: searchcast now depends on four pure-JS IPFS libraries (`multiformats`, `@ipld/car`, `@ipld/dag-pb`, `ipfs-unixfs`, about 5 MB installed with their own dependencies, no native code and no install scripts), for the verified fetch of IPFS content from trustless gateways behind `install-recipes ipfs://`. Nothing reaches them from the main entry.
+
 ## 0.3.0
 
 ### Minor Changes
