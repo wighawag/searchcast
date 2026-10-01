@@ -59,6 +59,7 @@ import {InstallError} from './install.js';
 import {checkNumber} from './options.js';
 import {recipesDir, SOURCE_FILE, type RecipeSetSource} from './recipes.js';
 import {
+	MAX_ARCHIVE_BYTES,
 	MAX_UNPACKED_BYTES,
 	readManifest,
 	recipeFiles,
@@ -97,8 +98,7 @@ export interface InstallRecipesResult {
 	status: 'installed' | 'replaced' | 'unchanged';
 }
 
-/** The ceiling (and default) of `installRecipes`' `maxArchiveBytes`. */
-export const MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
+export {MAX_ARCHIVE_BYTES} from './recipe-archive.js';
 const IDLE_TIMEOUT_MS = 60_000;
 const NOTHING = 'Nothing was installed.';
 
