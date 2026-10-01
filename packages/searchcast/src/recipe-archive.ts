@@ -6,7 +6,8 @@
 // file, an absolute or `..` path) is an InstallError naming the entry. Pure:
 // bytes in, file names and bytes out. A set DIRECTORY fetched from IPFS
 // (`recipeDirectoryFiles`) is held to the same file rules, plus a required
-// `manifest.json` (see install-recipes.ts' decisions).
+// `manifest.json` (see install-recipes.ts' decisions); the rules that need
+// names only (`recipeDirectoryProblem`) also judge its listing first.
 
 import {InstallError} from './install.js';
 import {SOURCE_FILE} from './recipes.js';
@@ -122,10 +123,41 @@ export function recipeDirectoryFiles(
 	return new Map([...files].sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
+/**
+ * Why a directory with these entry names cannot be a recipe set directory
+ * (the first entry that is not a recipe file name, or no `manifest.json`),
+ * or undefined when it can be one: the checks of `recipeDirectoryFiles` that
+ * need names only, so a directory's verified listing can be refused before
+ * any file is fetched (install-recipes.ts). No "Nothing was installed."
+ */
+export function recipeDirectoryProblem(
+	names: Iterable<string>,
+	what: string,
+): string | undefined {
+	let manifest = false;
+	for (const file of names) {
+		const why = fileNameProblem(file);
+		if (why) {
+			return `the directory entry ${JSON.stringify(file)} ${why}, so ${what} is not a recipe set directory`;
+		}
+		if (file === 'manifest.json') manifest = true;
+	}
+	return manifest
+		? undefined
+		: `${what} is a directory without a manifest.json, so not a recipe set directory`;
+}
+
 /** A recipe file's name, else `refuse(why)`: no hidden file, only `*.mjs`, `*.js`, `*.json`. */
 function checkFileName(file: string, refuse: (why: string) => never): void {
-	if (file.startsWith('.')) refuse('is a hidden file');
-	if (!RECIPE_FILE.test(file)) refuse('is not a *.mjs, *.js or *.json file');
+	const why = fileNameProblem(file);
+	if (why) refuse(why);
+}
+
+/** Why `file` is not a recipe file name, or undefined when it is one. */
+function fileNameProblem(file: string): string | undefined {
+	if (file.startsWith('.')) return 'is a hidden file';
+	if (!RECIPE_FILE.test(file)) return 'is not a *.mjs, *.js or *.json file';
+	return undefined;
 }
 
 export function readManifest(

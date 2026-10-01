@@ -42,6 +42,7 @@ import {startConnectProxy} from './servers.js';
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const run = promisify(execFile);
 const query = '?format=car&dag-scope=all';
+const entity = '?format=car&dag-scope=entity';
 
 const RECIPE = Buffer.from('{"name": "web"}\n');
 const CODE = Buffer.from(
@@ -64,8 +65,15 @@ const ARCHIVE = tarGz([
 //   docs/ {manifest.json, README.txt}
 //   hidden/ {manifest.json, ._web.json}
 // }
+// release/ {                   a release folder, as pinnace deploys one
+//   x-1.0.0.tar.gz, x-1.0.0.tar.gz.sha256, README.txt
+//   x/ {manifest.json (dir-set 2.0.0), web.json, api.mjs}
+// }
 let root: CID;
 let all: Buffer;
+let release: CID;
+let releaseCar: Buffer;
+let releaseFiles: Set<string>;
 let a: Gateway;
 let b: Gateway;
 let local: Gateway;
@@ -96,6 +104,24 @@ beforeAll(async () => {
 	});
 	// Every block, for every path: the unused ones stay under the slack.
 	all = await car([root], dag.blocks);
+	const folder = new Dag();
+	const unpacked = await folder.dir({
+		'manifest.json': await folder.file(manifest('dir-set', '2.0.0')),
+		'web.json': await folder.file(RECIPE),
+		'api.mjs': await folder.file(CODE),
+	});
+	release = await folder.dir({
+		'x-1.0.0.tar.gz': await folder.file(ARCHIVE),
+		'x-1.0.0.tar.gz.sha256': await folder.file(
+			Buffer.from(`${sha256(ARCHIVE)}  x-1.0.0.tar.gz\n`),
+		),
+		'README.txt': await folder.file(Buffer.from('a release\n')),
+		x: unpacked,
+	});
+	releaseCar = await car([release], folder.blocks);
+	releaseFiles = new Set(
+		folder.blocks.filter((x) => !x.cid.equals(release)).map((x) => `${x.cid}`),
+	);
 	[a, b, local] = await Promise.all([
 		startGateway(),
 		startGateway(),
@@ -136,6 +162,7 @@ afterEach(() => {
 	for (const g of [a, b, local]) {
 		g.hits.length = 0;
 		g.routes.clear();
+		g.ignoreScope = false;
 	}
 	rmSync(tmp, {recursive: true, force: true});
 	expect(snapshot()).toEqual(before); // the real data directory is untouched
@@ -190,6 +217,10 @@ describe('installRecipes from ipfs://', () => {
 			`archive sha256 ${sha256(ARCHIVE)} (not pinned: the CID pins it)`,
 		);
 		expect(log.some((l) => l.startsWith('verified ipfs://'))).toBe(true);
+		// One request: `entity` is the whole file.
+		expect(a.hits.map((h) => h.url)).toEqual([
+			`/ipfs/${root}/my-set-1.2.0.tar.gz${entity}`,
+		]);
 	});
 
 	it('checks a --sha256 given for an IPFS archive: a match installs, a mismatch installs nothing', async () => {
@@ -222,6 +253,11 @@ describe('installRecipes from ipfs://', () => {
 		const result = await installRecipes(at('set'), options);
 		const dir = join(base, 'dir-set');
 		expect(result).toMatchObject({name: 'dir-set', dir, status: 'installed'});
+		// The listing (entity), then the files (all), from the same gateway.
+		expect(a.hits.map((h) => h.url)).toEqual([
+			`/ipfs/${root}/set${entity}`,
+			`/ipfs/${root}/set${query}`,
+		]);
 		expect(readdirSync(dir).sort()).toEqual([
 			'.source.json',
 			'api.mjs',
@@ -274,6 +310,115 @@ describe('installRecipes from ipfs://', () => {
 			/"\._web\.json" is a hidden file/,
 		);
 		expect(existsSync(join(tmp, 'data'))).toBe(false);
+		// Each refused from its listing alone: one `entity` request each.
+		expect(a.hits.map((h) => h.url)).toEqual(
+			['set', 'bare', 'docs', 'hidden'].map(
+				(path) => `/ipfs/${root}/${path}${entity}`,
+			),
+		);
+	});
+
+	it('refuses a release folder from its listing alone (one entity request per gateway, no file served), naming the commands to type', async () => {
+		local.routes.set(`/ipfs/${release}${query}`, {status: 429});
+		a.routes.set(`/ipfs/${release}${query}`, releaseCar);
+		const message = await failure(
+			installRecipes(`ipfs://${release}`, {
+				ipfsGateways: [local.url, a.url, b.url],
+				env,
+			}),
+		);
+		expect(message).toBe(
+			`the directory entry "README.txt" is not a *.mjs, *.js or *.json file, so ipfs://${release} is not a recipe set directory; ` +
+				`it holds "README.txt", "x", "x-1.0.0.tar.gz", "x-1.0.0.tar.gz.sha256". ` +
+				`Try: searchcast install-recipes ipfs://${release}/x-1.0.0.tar.gz (a release archive); ` +
+				`or searchcast install-recipes ipfs://${release}/x (may be a set directory). Nothing was installed.`,
+		);
+		expect(local.hits.map((h) => h.url)).toEqual([`/ipfs/${release}${entity}`]);
+		expect(a.hits.map((h) => h.url)).toEqual([`/ipfs/${release}${entity}`]);
+		expect(a.hits[0]!.blocks).toEqual([release.toString()]); // the listing only
+		expect(b.hits).toEqual([]); // a verified refusal is the same everywhere
+		// A --sha256 pins an archive: kept in the archive's command only.
+		a.hits.length = 0;
+		const pinned = await failure(
+			installRecipes(`ipfs://${release}`, {
+				ipfsGateways: [a.url],
+				sha256: sha256(ARCHIVE),
+				env,
+			}),
+		);
+		expect(pinned).toContain(
+			`searchcast install-recipes ipfs://${release}/x-1.0.0.tar.gz --sha256 ${sha256(ARCHIVE)} (a release archive); ` +
+				`or searchcast install-recipes ipfs://${release}/x (may be a set directory).`,
+		);
+		expect(a.hits).toHaveLength(1);
+		expect(
+			a.hits.flatMap((h) => h.blocks).some((c) => releaseFiles.has(c!)),
+		).toBe(false);
+		expect(existsSync(join(tmp, 'data'))).toBe(false);
+	});
+
+	it('installs from the two paths a release folder suggests: the set directory (entity, then all) and the archive (one request)', async () => {
+		for (const path of ['x', 'x-1.0.0.tar.gz'])
+			a.routes.set(`/ipfs/${release}/${path}${query}`, releaseCar);
+		const options = {ipfsGateways: [a.url], env};
+		expect(await installRecipes(`ipfs://${release}/x`, options)).toMatchObject({
+			name: 'dir-set',
+			status: 'installed',
+		});
+		expect(
+			await installRecipes(`ipfs://${release}/x-1.0.0.tar.gz`, {
+				...options,
+				sha256: sha256(ARCHIVE),
+			}),
+		).toMatchObject({name: 'my-set', status: 'installed'});
+		expect(a.hits.map((h) => h.url)).toEqual([
+			`/ipfs/${release}/x${entity}`,
+			`/ipfs/${release}/x${query}`,
+			`/ipfs/${release}/x-1.0.0.tar.gz${entity}`,
+		]);
+	});
+
+	it('suggests nothing it cannot read from the listing, caps the entries it lists, and refuses --sha256 with a set directory after the listing', async () => {
+		const dag = new Dag();
+		const leaf = await dag.file(Buffer.from('x'));
+		const many = await dag.dir(
+			Object.fromEntries(
+				Array.from({length: 25}, (_, i) => [
+					`n${String(i).padStart(2, '0')}.txt`,
+					leaf,
+				]),
+			),
+		);
+		a.routes.set(`/ipfs/${many}${query}`, await car([many], dag.blocks));
+		const message = await failure(
+			installRecipes(`ipfs://${many}`, {ipfsGateways: [a.url], env}),
+		);
+		expect(message).toContain('"n19.txt" and 5 more. Nothing was installed.');
+		expect(message).not.toContain('"n20.txt"');
+		expect(message).not.toContain('Try:');
+		serve(a);
+		a.hits.length = 0;
+		expect(
+			await failure(
+				installRecipes(at('set'), {
+					ipfsGateways: [a.url],
+					env,
+					sha256: sha256(ARCHIVE),
+				}),
+			),
+		).toMatch(/--sha256 pins an archive's bytes/);
+		expect(a.hits.map((h) => h.url)).toEqual([`/ipfs/${root}/set${entity}`]);
+	});
+
+	it('installs a set directory from a gateway that ignores dag-scope=entity, in one request', async () => {
+		serve(a);
+		a.ignoreScope = true;
+		const result = await installRecipes(at('set'), {
+			ipfsGateways: [a.url],
+			env,
+		});
+		expect(result).toMatchObject({name: 'dir-set', status: 'installed'});
+		expect(a.hits.map((h) => h.url)).toEqual([`/ipfs/${root}/set${entity}`]);
 	});
 
 	it('skips a rate-limited gateway and one serving content that is not the CID, recording the one that verified', async () => {
@@ -339,7 +484,9 @@ describe('installRecipes from ipfs://', () => {
 				proxy: `http://127.0.0.1:${proxy.port}`,
 				env,
 			});
+			// The listing (entity), then the files (all).
 			expect(proxy.requests).toEqual([
+				{host: 'localhost', port: Number(new URL(a.url).port)},
 				{host: 'localhost', port: Number(new URL(a.url).port)},
 			]);
 		} finally {
