@@ -245,7 +245,7 @@ describe('installRecipes from ipfs://', () => {
 		const log: string[] = [];
 		const result = await installRecipes(at('my-set-1.2.0.tar.gz'), {
 			...options,
-			sha256: sha256(ARCHIVE),
+			sha256: sha256(ARCHIVE).toUpperCase(),
 			log: (line) => log.push(line),
 		});
 		expect(result.status).toBe('installed');
