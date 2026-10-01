@@ -1,14 +1,8 @@
 // fetchIpfs (src/ipfs.ts) against local fake trustless gateways (HTTPS with
 // the test certificate, trusted in this test process only, and one plain
-// http://127.0.0.1 standing in for a local node). The CARs are built here from
-// in-test files with the same IPFS libraries. No network.
+// http://127.0.0.1 standing in for a local node; ipfs-gateway.ts). The CARs
+// are built here from in-test files with the same IPFS libraries. No network.
 
-import {readFileSync} from 'node:fs';
-import http from 'node:http';
-import https from 'node:https';
-import type {AddressInfo} from 'node:net';
-import tls from 'node:tls';
-import {CarWriter} from '@ipld/car/writer';
 import * as dagPb from '@ipld/dag-pb';
 import {UnixFS} from 'ipfs-unixfs';
 import {CID} from 'multiformats/cid';
@@ -23,118 +17,16 @@ import {
 	UNUSED_SLACK_BYTES,
 } from '../src/ipfs.js';
 import {MAX_ARCHIVE_BYTES, MAX_UNPACKED_BYTES} from '../src/recipe-archive.js';
-import {CA_PATH, startConnectProxy} from './servers.js';
-
-const RAW = 0x55;
-
-interface Block {
-	cid: CID;
-	bytes: Uint8Array;
-}
-
-/** A UnixFS DAG built block by block, as `ipfs add` would (raw leaves, CIDv1). */
-class Dag {
-	blocks: Block[] = [];
-	async put(codec: number, bytes: Uint8Array, version: 0 | 1 = 1) {
-		const cid = CID.create(version, codec, await sha256.digest(bytes));
-		this.blocks.push({cid, bytes});
-		return cid;
-	}
-	pbNode(unixfs: UnixFS, links: dagPb.PBLink[] = []) {
-		return dagPb.encode(dagPb.prepare({Data: unixfs.marshal(), Links: links}));
-	}
-	/** A file: one raw leaf, or raw leaves of `chunk` bytes under a dag-pb root. */
-	async file(body: Buffer, chunk = 64, version: 0 | 1 = 1): Promise<CID> {
-		if (body.length <= chunk && version === 1) return this.put(RAW, body);
-		const leaves: CID[] = [];
-		const sizes: bigint[] = [];
-		for (let i = 0; i < body.length; i += chunk) {
-			const part = body.subarray(i, i + chunk);
-			leaves.push(await this.put(RAW, part));
-			sizes.push(BigInt(part.length));
-		}
-		const unixfs = new UnixFS({type: 'file', blockSizes: sizes});
-		const links = leaves.map((Hash, i) => ({
-			Hash,
-			Name: '',
-			Tsize: Number(sizes[i]),
-		}));
-		return this.put(dagPb.code, this.pbNode(unixfs, links), version);
-	}
-	async dir(entries: Record<string, CID>): Promise<CID> {
-		const links = Object.entries(entries).map(([Name, Hash]) => ({
-			Name,
-			Hash,
-			Tsize: 1,
-		}));
-		return this.put(
-			dagPb.code,
-			this.pbNode(new UnixFS({type: 'directory'}), links),
-		);
-	}
-}
-
-/** A CARv1 of `blocks` with `roots` in its header. */
-async function car(roots: CID[], blocks: Block[]): Promise<Buffer> {
-	const {writer, out} = CarWriter.create(roots);
-	const chunks: Uint8Array[] = [];
-	const collected = (async () => {
-		for await (const chunk of out) chunks.push(chunk);
-	})();
-	for (const block of blocks) await writer.put(block);
-	await writer.close();
-	await collected;
-	return Buffer.concat(chunks);
-}
-
-type Answer = Buffer | {status: number};
-interface Gateway {
-	url: string;
-	hits: {url: string; accept?: string}[];
-	/** What `GET /ipfs/...` answers; undefined is a 404. */
-	routes: Map<string, Answer>;
-	close(): Promise<void>;
-}
-
-async function startGateway(secure = true): Promise<Gateway> {
-	const hits: Gateway['hits'] = [];
-	const routes = new Map<string, Answer>();
-	const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
-		hits.push({url: req.url ?? '', accept: req.headers.accept});
-		const answer = routes.get(req.url ?? '');
-		if (!answer) return void res.writeHead(404).end('not found');
-		if (Buffer.isBuffer(answer)) {
-			res.writeHead(200, {
-				'content-type': 'application/vnd.ipld.car; version=1',
-			});
-			return void res.end(answer);
-		}
-		res.writeHead(answer.status).end();
-	};
-	const fixture = (name: string) =>
-		readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
-	const server = secure
-		? https.createServer(
-				{
-					key: fixture('localhost-key.pem'),
-					cert: fixture('localhost-cert.pem'),
-				},
-				handler,
-			)
-		: http.createServer(handler);
-	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-	const {port} = server.address() as AddressInfo;
-	return {
-		url: secure ? `https://localhost:${port}` : `http://127.0.0.1:${port}`,
-		hits,
-		routes,
-		close: () =>
-			new Promise((resolve) => {
-				server.closeAllConnections();
-				server.close(() => resolve());
-			}),
-	};
-}
+import {
+	car,
+	Dag,
+	RAW,
+	startGateway,
+	trustTestCertificate,
+	type Block,
+	type Gateway,
+} from './ipfs-gateway.js';
+import {startConnectProxy} from './servers.js';
 
 const query = '?format=car&dag-scope=all';
 const RECIPE = Buffer.from(
@@ -159,11 +51,7 @@ let b: Gateway;
 const gateways = () => [a.url, b.url];
 
 beforeAll(async () => {
-	// Trust the test certificate, in this test process only (vitest forks).
-	tls.setDefaultCACertificates([
-		...tls.getCACertificates('default'),
-		readFileSync(CA_PATH, 'utf8'),
-	]);
+	trustTestCertificate();
 	web = await dag.file(RECIPE);
 	api = await dag.file(CODE);
 	manifest = await dag.file(MANIFEST);

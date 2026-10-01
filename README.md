@@ -9,7 +9,7 @@ Getting keyless web search results today usually means running SearXNG. What Sea
 - Engines are tried as an ordered **engine chain**, first answer wins, with a real browser (the browser runner) as the fallback when HTTP is blocked.
 - searchcast is **not** an anonymity tool, and it is built so one can use it safely: the caller injects the proxy, the state store and the recipe set; searchcast makes no network call the caller did not cause and writes nothing to disk on its own ([ADR 0002](docs/adr/0002-policy-free-caller-injects-egress-state-recipes.md)).
 
-Status: in development (0.x; the API may still change between minor versions). Available: the engine chain with its state store, the transport, the declarative recipe runner, code recipes and browser engines, with `searchcast query` for recipe development, `searchcast install-libcurl` to install the native library, `searchcast doctor` to check it, `searchcast install-recipes` to install a checksum-pinned set of recipes, and `searchcast serve` to serve recipes from a real browser as a JSON API (with `@searchcast/browser` installed).
+Status: in development (0.x; the API may still change between minor versions). Available: the engine chain with its state store, the transport, the declarative recipe runner, code recipes and browser engines, with `searchcast query` for recipe development, `searchcast install-libcurl` to install the native library, `searchcast doctor` to check it, `searchcast install-recipes` to install a checksum-pinned set of recipes (or one from IPFS, verified against its CID), and `searchcast serve` to serve recipes from a real browser as a JSON API (with `@searchcast/browser` installed).
 
 searchcast was called **serpcast** until 0.2.0, and the name `searchcast` 0.1.x was the browser runner: see [Upgrading from serpcast](#upgrading-from-serpcast) and [Upgrading from searchcast 0.1.x](#upgrading-from-searchcast-01x). Every rename is recorded in [ADR 0005](docs/adr/0005-serpcast-renamed-to-searchcast-browser-runner-becomes-searchcast-browser.md).
 
@@ -412,19 +412,21 @@ A recipe repository can publish its recipes as one release archive, and `searchc
 
 ```sh
 searchcast install-recipes <url|path> --sha256 <hex> [--name <set>] [--dir <path>] [--proxy <url>] [--force]
+searchcast install-recipes ipfs://<cid>[/<path>] [--sha256 <hex>] [--ipfs-gateway <url>]... [--name <set>] [--dir <path>] [--proxy <url>] [--force]
 searchcast recipes list [--dir <path>]
 ```
 
-**`--sha256` is required, for a URL and a local file alike.** Code recipes are code with full Node access (see [Code recipes](#code-recipes)), so the pinned checksum is your trust decision: it says "exactly these bytes, which I have reviewed or whose publisher I trust". Get it from the publisher through a channel you trust, or compute it yourself (`sha256sum set.tar.gz`) after reviewing the archive. There is no way to install without one.
+**`--sha256` is required, for a URL and a local file alike** (an `ipfs://` source is pinned by its CID instead, see [Installing from IPFS](#installing-from-ipfs)). Code recipes are code with full Node access (see [Code recipes](#code-recipes)), so the pinned checksum is your trust decision: it says "exactly these bytes, which I have reviewed or whose publisher I trust". Get it from the publisher through a channel you trust, or compute it yourself (`sha256sum set.tar.gz`) after reviewing the archive. There is no way to install without one.
 
 - The source is an `http://` or `https://` URL (downloaded with the same downloader as `install-libcurl`: through `--proxy` if given, with proxy environment variables ignored, no redirect from https to http, at most 16 MiB) or a path to a local file (`--proxy` is refused with a file, since it would not be used).
+- Or the source is `ipfs://<cid>[/<path>]`: see [Installing from IPFS](#installing-from-ipfs). Any other `scheme://` is refused.
 - The archive's sha256 is checked **before** anything is unpacked. It is unpacked in-process (no `tar` binary) and validated as a whole before anything is written (see the format below): one bad entry fails the install.
 - The set goes into `<set>/` under the recipes directory, which is `recipes/` in the data directory (`$XDG_DATA_HOME/searchcast/recipes`, by default `~/.local/share/searchcast/recipes`), or `--dir`. The set's name is `--name` if given, else the `name` in the archive's `manifest.json`, else the command fails. Names are letters, digits, `.`, `_` and `-`, starting with a letter or digit.
-- The set is written to a temporary directory beside its destination and renamed into place, so an interrupted install leaves the previous set or nothing, never a partial one. Beside the recipes it writes `.source.json`: the source given, the URL after redirects, the archive's sha256, the manifest's name and version, each file's sha256 and the install time.
+- The set is written to a temporary directory beside its destination and renamed into place, so an interrupted install leaves the previous set or nothing, never a partial one. Beside the recipes it writes `.source.json`: the source given, the URL after redirects (or, from IPFS, the root CID and the gateway that served it), the archive's sha256 (none for an IPFS set directory), the manifest's name and version, each file's sha256 and the install time.
 - If a set with that name exists: an identical one (same files, same bytes) is left alone (exit 0); a different one is kept and the command fails, unless `--force` replaces it (the whole set: files the new archive lacks are removed).
 - It prints what it downloads or reads, the verified checksum, and each installed file with its own sha256 on stderr, and the set's directory alone on stdout. A failure is `searchcast: <message>` on stderr, exit 1, and installs nothing; a missing `--sha256` is a usage error (exit 2).
 
-`searchcast recipes list` shows each installed set: its directory, the manifest's name and version, the source and sha256 recorded at install, and its files with their sha256. Without `--dir`, it then lists the sets still in serpcast's old data directory (`$XDG_DATA_HOME/serpcast/recipes`), each marked `used` (the new directory has no set of that name) or `not used` (a set of that name in the new directory wins). It makes no network request. `install-recipes` writes only to the new directory, never to the old one.
+`searchcast recipes list` shows each installed set: its directory, the manifest's name and version, the source and sha256 recorded at install (for an `ipfs://` source, also its CID and gateway), and its files with their sha256. Without `--dir`, it then lists the sets still in serpcast's old data directory (`$XDG_DATA_HOME/serpcast/recipes`), each marked `used` (the new directory has no set of that name) or `not used` (a set of that name in the new directory wins). It makes no network request. `install-recipes` writes only to the new directory, never to the old one.
 
 To use an installed set, load its files yourself: `recipeSetDir(name, env?)` (exported from `searchcast`) returns the set's directory, in the recipes directory or, when it has no set of that name, in serpcast's old one (for one release), or `undefined`; so `join(recipeSetDir('my-set')!, 'web.json')` goes to `loadRecipeFile` and `join(recipeSetDir('my-set')!, 'api.mjs')` to `loadCodeRecipe`. `recipesDir(env?)` is the recipes directory itself, where `install-recipes` writes. Which files are engines is up to you (a set may hold helper modules, and it holds its `manifest.json`).
 
@@ -436,6 +438,7 @@ What a recipe repository's release asset must be:
 - Only regular files named `*.mjs`, `*.js` or `*.json`: declarative recipes, code recipes and modules they import. Prefer `.mjs` for code, since the installed set has no `package.json` to say `.js` is ESM.
 - All files at the archive's root, or all under one top-level directory (such as `my-set-1.2.0/`), with no deeper directories. Directory entries for the root and that one directory are fine.
 - Optionally a `manifest.json` `{"name": "my-set", "version": "1.2.0"}`: `name` is the default set name, and both are shown by `recipes list`. It is installed with the set.
+- Publishing to IPFS: pin the archive, or the set's directory itself (with its `manifest.json`), and give users the `ipfs://<cid>/<path>`; no checksum is needed beside it (see [Installing from IPFS](#installing-from-ipfs)).
 - Nothing else. Absolute paths, `..`, symlinks and hard links, device files, hidden files (a leading `.`, which includes macOS `._*` files and the reserved `.source.json`), nested directories, other file types or the same file twice each fail the whole install, naming the entry.
 
 For example, from a directory holding the recipes: `tar czf my-set-1.2.0.tar.gz my-set/` (GNU tar; on macOS set `COPYFILE_DISABLE=1`), or `git archive --format=tar.gz --prefix=my-set/ -o my-set-1.2.0.tar.gz HEAD:recipes` for a `recipes/` folder of a git repository. GitHub's automatic "Source code" archives hold the whole repository (README, license, ...) and are refused: publish a dedicated asset, and its sha256 with it.
@@ -446,6 +449,25 @@ For example, from a directory holding the recipes: `tar czf my-set-1.2.0.tar.gz 
 gh release download v1.2.0 --repo owner/recipes --pattern 'my-set-1.2.0.tar.gz'
 searchcast install-recipes ./my-set-1.2.0.tar.gz --sha256 <hex>
 ```
+
+### Installing from IPFS
+
+A set published to IPFS installs by its CID, with no `--sha256`:
+
+```sh
+searchcast install-recipes ipfs://<cid>/my-set-1.2.0.tar.gz
+searchcast install-recipes ipfs://<cid>/my-set
+```
+
+The path names either a release archive (a file, checked like any other archive, see [Release archive format](#release-archive-format)) or a **set directory**: a flat directory holding a `manifest.json` and recipe files only, held to the same rules as an archive's files (no hidden files, no other file types, no subdirectories), and installed the same way (temporary directory, rename into place, `--force` to replace, an identical set left alone).
+
+**What is verified.** The CID is the pin: it names exactly one content, so whoever serves it is trusted for nothing. searchcast asks a **trustless gateway** for the content as a CAR (`GET <gateway>/ipfs/<cid>/<path>?format=car&dag-scope=all`, `accept: application/vnd.ipld.car`, the [trustless gateway spec](https://specs.ipfs.tech/http-gateways/trustless-gateway/)), hashes every block and checks it against its CID (sha2-256, UnixFS dag-pb and raw blocks only), resolves `<path>` itself from the root CID through verified links, and rebuilds the files from verified blocks only, before anything is unpacked or written. A gateway that answers with an error (a 429 rate limit, a 5xx), times out, or sends a block that does not match, a missing block or extra junk is skipped and the next one asked; the install fails only when every gateway failed, listing each one's reason. The CAR is held to the archive cap (16 MiB) and the rebuilt content to the unpacked cap (64 MiB). A `--sha256` is still accepted for an archive, and then must match as well; it is refused for a set directory, which has no archive bytes to compare. IPNS and DNSLink names are not accepted, only CIDs.
+
+**The gateways.** By default `https://trustless-gateway.link` then `https://4everland.io`, two operators so that one rate limit is not the end. `--ipfs-gateway <url>` (repeatable, tried in the order given) replaces the defaults: your own path gateway, a public one, or a local Kubo node at `http://127.0.0.1:8080`. A gateway must be `https://`, or `http://` on `127.0.0.1`, `localhost` or `[::1]`. `--ipfs-gateway` with a source that is not `ipfs://` is refused, since it would not be used.
+
+**The proxy.** There is no IPFS node, daemon or peer-to-peer traffic: each gateway is one HTTPS request made with the same downloader as every other install, so `--proxy` applies exactly as for a URL (proxy environment variables ignored, no redirect from https to http). With `--proxy`, a local gateway is reached through the proxy too: your egress is never bypassed.
+
+`.source.json` records the `ipfs://` source, its root CID and the gateway whose CAR verified, and `recipes list` shows them.
 
 ## Install API for embedders (`searchcast/install`)
 
@@ -462,7 +484,8 @@ console.log(listRecipeSets(recipesDir()));
 | export | what it is |
 | ------ | ---------- |
 | `installLibcurl(options?)` | `searchcast install-libcurl`: resolves to `{path, url, status}` (`installed`, `replaced` or `unchanged`); options `proxy`, `force`, `env`, `log`, `maxArchiveBytes`, `maxUnpackedBytes`. |
-| `installRecipes(source, options)` | `searchcast install-recipes`: resolves to `{name, dir, files, status}`; options `sha256` (required), `name`, `dir`, `proxy`, `force`, `env`, `log`, `maxArchiveBytes`, `maxUnpackedBytes`. |
+| `installRecipes(source, options)` | `searchcast install-recipes`: resolves to `{name, dir, files, status}`; options `sha256` (required except for an `ipfs://` source), `ipfsGateways` (`ipfs://` sources only; default `DEFAULT_IPFS_GATEWAYS`), `name`, `dir`, `proxy`, `force`, `env`, `log`, `maxArchiveBytes`, `maxUnpackedBytes`. |
+| `DEFAULT_IPFS_GATEWAYS` | The trustless gateways an `ipfs://` source is fetched from by default, in order: to put your own in front, `[mine, ...DEFAULT_IPFS_GATEWAYS]`. |
 | `listRecipeSets(base)`, `formatRecipeSets(base, sets)`, `formatInstalledRecipeSets(env?)`, `recipesDir(env?)`, `recipeSetDir(name, env?)` | `searchcast recipes list`: the installed sets with their `.source.json` record, the text the CLI prints (with `--dir`, and without it, old data directory included), the recipes directory and one set's directory (old data directory fallback included). |
 | `doctor(options?)`, `healthy(report)`, `formatReport(report, proxy?)` | `searchcast doctor`: the report (`{pinned, target, library?, impersonating, problem?, remote?, oldDataDir?}`), whether it is all good, and the text the CLI prints; options `libcurlPath`, `proxy`, `remote`, `env`. |
 | `InstallError` | What a failed install rejects with; nothing was installed. |
@@ -470,7 +493,7 @@ console.log(listRecipeSets(recipesDir()));
 | `oldDataDir(env?)`, `oldDataDirHits(env?)` | serpcast's old data directory, and what is read from it with the command that moves it (`{dir, newDir, items, command}`, or `undefined`): to show the same notice as `doctor`. Deprecated with the fallback, which goes in the next minor after 0.2.x. |
 | `MAX_LIBCURL_ARCHIVE_BYTES`, `MAX_LIBCURL_UNPACKED_BYTES`, `MAX_RECIPES_ARCHIVE_BYTES`, `MAX_RECIPES_UNPACKED_BYTES` | The installers' size caps (below). |
 
-Everything the CLI guarantees holds here too, with no switch to turn it off: the pinned checksums (the libcurl release's, and the `sha256` you pass for recipes), the archive validation, and the caller's proxy as the only egress. The size caps are safety ceilings:
+Everything the CLI guarantees holds here too, with no switch to turn it off: the pinned checksums (the libcurl release's, and the `sha256` you pass for recipes, or the CID of an `ipfs://` source, verified block by block), the archive validation, and the caller's proxy as the only egress. The size caps are safety ceilings:
 
 | option (both installers) | default and ceiling | meaning |
 | ------------------------ | ------------------- | ------- |
@@ -601,36 +624,37 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | ------ | --: | -----: |
 | `src/code.ts` | 432 | 320 |
 | `src/download.ts` | 290 | 300 |
+| `src/ipfs.ts` | 447 | 450 |
 | `src/transport.ts` | 723 | 300 |
 | `src/libcurl.ts` | 378 | 280 |
 | `src/chain.ts` | 454 | 260 |
 | `src/browser.ts` | 237 | 250 |
 | `src/declarative.ts` | 198 | 220 |
 | `src/install.ts` | 239 | 180 |
-| `src/install-recipes.ts` | 263 | 250 |
-| `src/recipe-archive.ts` | 124 | 130 |
-| `src/recipes.ts` | 152 | 160 |
+| `src/install-recipes.ts` | 373 | 250 |
+| `src/recipe-archive.ts` | 167 | 130 |
+| `src/recipes.ts` | 159 | 160 |
 | `src/tar.ts` | 53 | 60 |
 | `src/cookies.ts` | 245 | 170 |
 | `src/post.ts` | 165 | 160 |
 | `src/author-headers.ts` | 186 | 190 |
 | `src/searchcast-endpoint.ts` | 182 | 170 |
 | `src/doctor.ts` | 194 | 180 |
-| `src/cli.ts` | 192 | 200 |
+| `src/cli.ts` | 220 | 200 |
 | `src/browser-cli.ts` | 64 | 70 |
 | `src/html.ts` | 126 | 150 |
 | `src/chrome.ts` | 400 | 150 |
-| `src/index.ts` | 161 | 160 |
+| `src/index.ts` | 168 | 160 |
 | `src/response.ts` | 98 | 120 |
 | `src/store.ts` | 63 | 80 |
 | `src/errors.ts` | 45 | 50 |
 | `src/decoy.ts` | 110 | 120 |
 | `src/options.ts` | 67 | 80 |
-| `src/install-api.ts` | 49 | 60 |
+| `src/install-api.ts` | 50 | 60 |
 | `src/data-dir.ts` | 95 | 100 |
 | `src/deprecated.ts` | 24 | 40 |
 
-**Total own source: 6063 LOC** (`packages/searchcast/src`) (excluding deps).
+**Total own source: 6693 LOC** (`packages/searchcast/src`) (excluding deps).
 
 ## Develop
 

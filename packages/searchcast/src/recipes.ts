@@ -19,12 +19,16 @@ export const SOURCE_FILE = '.source.json';
 
 /** What install records in a set's `.source.json`. */
 export interface RecipeSetSource {
-	/** The URL or file path given to install. */
+	/** The URL (`http(s)://` or `ipfs://`) or file path given to install. */
 	source: string;
-	/** The URL the archive came from after redirects, for a URL source. */
+	/** The URL the archive came from after redirects, for an http(s) source. */
 	url?: string;
-	/** The archive's sha256, as pinned with `--sha256`. */
-	sha256: string;
+	/** The root CID, for an `ipfs://` source (with the path in `source`, the pin). */
+	cid?: string;
+	/** The trustless gateway whose CAR verified against the CID, for an `ipfs://` source. */
+	gateway?: string;
+	/** The archive's sha256 (pinned with `--sha256` except from IPFS, where the CID pins it); absent for an IPFS set directory. */
+	sha256?: string;
 	/** The archive's `manifest.json` name and version, when it had one. */
 	manifest?: {name?: string; version?: string};
 	/** Each installed file (all at the set's top level), with its sha256. */
@@ -128,7 +132,7 @@ export function formatRecipeSets(
 	if (!sets.length) return `no recipe sets installed in ${base}`;
 	const lines = [header];
 	for (const set of sets) {
-		const {manifest, source, url, sha256, files, installedAt} =
+		const {manifest, source, url, cid, gateway, sha256, files, installedAt} =
 			set.source ?? ({} as Partial<RecipeSetSource>);
 		const version = manifest?.version ? ` ${manifest.version}` : '';
 		const named =
@@ -142,7 +146,10 @@ export function formatRecipeSets(
 		else {
 			lines.push(`  source:    ${source}`);
 			if (url && url !== source) lines.push(`  from:      ${url}`);
-			lines.push(`  sha256:    ${sha256}`, `  installed: ${installedAt}`);
+			if (cid) lines.push(`  cid:       ${cid}`);
+			if (gateway) lines.push(`  gateway:   ${gateway}`);
+			if (sha256) lines.push(`  sha256:    ${sha256}`);
+			lines.push(`  installed: ${installedAt}`);
 		}
 		for (const file of set.files) {
 			lines.push(`  ${file}${files?.[file] ? `  sha256 ${files[file]}` : ''}`);
