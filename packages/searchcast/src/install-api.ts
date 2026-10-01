@@ -14,6 +14,7 @@ export {
 	installLibcurl,
 	type InstallOptions,
 	type InstallResult,
+	type InstallSuggestion,
 	type Release,
 } from './install.js';
 export {
