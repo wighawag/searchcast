@@ -11,7 +11,8 @@
 // the `all` CAR; when it cannot (the CAR is not the path's DAG: a test of a
 // bad gateway), or when `ignoreScope` is set (a gateway ignoring the
 // parameter, which the spec allows), it sends the `all` answer as is. Each
-// hit records the CIDs of the blocks it was sent.
+// hit records the CIDs of the blocks it was sent. A status answer may carry a
+// `location` (a gateway redirecting to another one).
 
 import {readFileSync} from 'node:fs';
 import http from 'node:http';
@@ -96,7 +97,8 @@ export async function car(roots: CID[], blocks: Block[]): Promise<Buffer> {
 	return Buffer.concat(chunks);
 }
 
-export type Answer = Buffer | {status: number};
+/** A CAR (200), or a bare status, with a `location` header for a redirect. */
+export type Answer = Buffer | {status: number; location?: string};
 export interface Gateway {
 	url: string;
 	/** Each request: its URL and accept header, and the CIDs of the blocks of the CAR sent (if one was). */
@@ -220,7 +222,12 @@ export async function startGateway(secure = true): Promise<Gateway> {
 			});
 			return void res.end(answer);
 		}
-		res.writeHead(answer.status).end();
+		res
+			.writeHead(
+				answer.status,
+				answer.location ? {location: answer.location} : {},
+			)
+			.end();
 	};
 	const fixture = (name: string) =>
 		readFileSync(new URL(`./fixtures/${name}`, import.meta.url));

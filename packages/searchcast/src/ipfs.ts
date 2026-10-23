@@ -109,6 +109,40 @@
 //   (the next gateway is asked) rather than a refusal.
 // - The nested-directory refusal names the `ipfs://` path of that
 //   directory, to try it as a target itself.
+//
+// Decisions (task ipfs-default-gateways, 2026-10-23):
+// - The defaults are four gateways on four operators (see
+//   DEFAULT_IPFS_GATEWAYS for the order and why): on 2026-10-23 both former
+//   defaults failed for a pinned CID (trustless-gateway.link: 522 then 526,
+//   Cloudflare origin errors; 4everland.io: a body that is not a CAR).
+//   Every operator's own documentation was read, none forbids this use:
+//   each calls its public gateway best-effort, for testing or light use,
+//   and rate limited (Pinata: "not meant for production apps"; Filebase:
+//   "testing and light usage", 200 requests a minute; 4EVERLAND: 300 a
+//   minute; the IPFS Foundation: "not intended to be part of your critical
+//   path", and backend services should self-host). An install is a few
+//   requests, once in a while, so it is light use; a user who needs more
+//   runs a gateway (`--ipfs-gateway`). Not added: `w3s.link` and
+//   `dweb.link` (they redirect to trustless-gateway.link, the survey) and
+//   `ipfs.io` (the same backend, per docs.ipfs.tech). Caveat: the survey
+//   CID was published with pinnace, which may pin it on Pinata and
+//   Filebase themselves, so their answer for a CID held elsewhere was not
+//   observed. Alternatives: three gateways (dropping 4everland.io, whose
+//   answer was not a CAR); kept last, it costs a request only when the
+//   three before it failed, and it is a fourth operator.
+// - Redirects: a gateway's 301/302 to another gateway is followed by
+//   download.ts like any download (at most 10 hops, never https to http,
+//   every hop through the caller's proxy, the `accept` header kept, the
+//   size cap on the final body), and its CAR is verified the same. The
+//   gateway reported (in the result, the log and so `.source.json`) is the
+//   CONFIGURED one, not the redirect target: it is what the user chose and
+//   can pass again, and the record trusts it for nothing. Alternative:
+//   report download's final URL's origin (would need a second field to
+//   keep the configured one). Tested in test/ipfs.test.ts.
+// - The all-failed error ends with one generic sentence on choosing other
+//   gateways (`--ipfs-gateway`, `ipfsGateways`, a local node's gateway),
+//   naming no gateway, and no trailing period (install-recipes appends its
+//   own ". Nothing was installed.").
 
 import {createHash} from 'node:crypto';
 import {CarBufferReader} from '@ipld/car/buffer-reader';
@@ -121,17 +155,27 @@ import {checkNumber} from './options.js';
 import {MAX_ARCHIVE_BYTES, MAX_UNPACKED_BYTES} from './recipe-archive.js';
 
 /**
- * The default trustless gateways, in order: two operators, so one backend's
- * rate limit is not the end. `trustless-gateway.link` is the IPFS
- * Foundation's trustless-only gateway (docs.ipfs.tech, "Public IPFS
- * Utilities"; ipfs.io and dweb.link are the SAME backend, so they are not
- * added); `4everland.io` is the second default trustless gateway of Helia
- * (`@helia/block-brokers`). Chosen from the spec and that documentation
- * only: NOT live-verified in the build that added it (2026-10-01), because
- * public gateways were rate-limiting the build machine.
+ * The default trustless gateways, in order, each on its own operator so one
+ * operator's bad day is not the end (survey of 2026-10-23, one `entity` CAR
+ * request each; see the decisions of task ipfs-default-gateways above):
+ *
+ * 1. `trustless-gateway.link`: the IPFS Foundation's trustless-only gateway
+ *    (docs.ipfs.tech, "Public IPFS Utilities"), built for clients that
+ *    verify, and documented to fetch any CID announced on the network
+ *    (the others' reach beyond content pinned with them was not observed);
+ *    first despite failing (522, 526) on the survey day: one bad day, which
+ *    the next gateway now covers.
+ * 2. `gateway.pinata.cloud` (Pinata): a valid CAR that honoured
+ *    `dag-scope=entity`.
+ * 3. `ipfs.filebase.io` (Filebase): a valid CAR, but the whole DAG
+ *    (it ignored `dag-scope=entity`, accepted), so more bytes: after Pinata.
+ * 4. `4everland.io` (4EVERLAND, Helia's second default trustless gateway):
+ *    not a CAR on the survey day, so last.
  */
 export const DEFAULT_IPFS_GATEWAYS: readonly string[] = Object.freeze([
 	'https://trustless-gateway.link',
+	'https://gateway.pinata.cloud',
+	'https://ipfs.filebase.io',
 	'https://4everland.io',
 ]);
 
@@ -337,7 +381,9 @@ export async function fetchIpfs(
 		}
 	}
 	throw new InstallError(
-		`no gateway served ${source} verified against its CID: ${reasons.join('; ')}`,
+		`no gateway served ${source} verified against its CID: ${reasons.join('; ')}. ` +
+			'To choose other gateways, pass --ipfs-gateway <url> (repeatable; ipfsGateways in the API), ' +
+			"for example your own node's gateway at http://127.0.0.1:8080",
 	);
 }
 
