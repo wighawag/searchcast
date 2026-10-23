@@ -420,8 +420,96 @@ describe('fetchIpfs', () => {
 		expect((error as Error).message).toBe(
 			`no gateway served ipfs://${set} verified against its CID: ` +
 				`${a.url}: GET ${a.url}/ipfs/${set}${entity}: HTTP 429; ` +
-				`${b.url}: GET ${b.url}/ipfs/${set}${entity}: HTTP 404`,
+				`${b.url}: GET ${b.url}/ipfs/${set}${entity}: HTTP 404. ` +
+				'To choose other gateways, pass --ipfs-gateway <url> (repeatable; ipfsGateways in the API), ' +
+				"for example your own node's gateway at http://127.0.0.1:8080",
 		);
+	});
+
+	it('follows a redirect to another https gateway within the download rules, verifying whatever it serves', async () => {
+		// a redirects (301 for `entity`, 302 for `all`) to the same request on b,
+		// as w3s.link and dweb.link do to trustless-gateway.link.
+		const redirect = (to: string, path: string) => {
+			a.routes.set(`${path}${entity}`, {
+				status: 301,
+				location: `${to}${path}${entity}`,
+			});
+			a.routes.set(`${path}${query}`, {
+				status: 302,
+				location: `${to}${path}${query}`,
+			});
+		};
+		redirect(b.url, `/ipfs/${set}`);
+		b.routes.set(`/ipfs/${set}${query}`, await car([set], setBlocks));
+		const proxy = await startConnectProxy();
+		try {
+			const {lines, log} = logger();
+			const result = await fetchIpfs(`ipfs://${set}`, {
+				ipfsGateways: [a.url],
+				proxy: `http://127.0.0.1:${proxy.port}`,
+				log,
+			});
+			// The gateway reported (and so `.source.json`'s) is the one configured.
+			expect(result.gateway).toBe(a.url);
+			expect(lines.join('\n')).toContain(`(from ${a.url})`);
+			expect(result.content.type).toBe('directory');
+			// Every hop through the caller's proxy, the accept header kept.
+			const port = (g: Gateway) => Number(new URL(g.url).port);
+			expect(proxy.requests).toEqual([
+				{host: 'localhost', port: port(a)},
+				{host: 'localhost', port: port(b)},
+				{host: 'localhost', port: port(a)},
+				{host: 'localhost', port: port(b)},
+			]);
+			expect(b.hits.map((h) => [h.url, h.accept])).toEqual([
+				[`/ipfs/${set}${entity}`, 'application/vnd.ipld.car'],
+				[`/ipfs/${set}${query}`, 'application/vnd.ipld.car'],
+			]);
+		} finally {
+			await proxy.close();
+		}
+
+		// What the redirect target serves is verified like any answer.
+		const tampered = setBlocks.map((x) =>
+			x.cid.equals(api) ? {cid: x.cid, bytes: Buffer.from('tampered')} : x,
+		);
+		b.routes.set(`/ipfs/${set}${query}`, await car([set], tampered));
+		await expect(
+			fetchIpfs(`ipfs://${set}`, {ipfsGateways: [a.url]}),
+		).rejects.toThrow(
+			`${a.url}: the CAR's block ${api} does not match its CID`,
+		);
+
+		// The size cap holds for the redirect target's body.
+		const body = await car([set], setBlocks);
+		b.routes.set(`/ipfs/${set}${query}`, body);
+		await expect(
+			fetchIpfs(`ipfs://${set}`, {
+				ipfsGateways: [a.url],
+				maxCarBytes: block(set).bytes.length + 16,
+			}),
+		).rejects.toThrow(/is larger than \d+ bytes/);
+
+		// No redirect from https to http, even to a loopback node: the next
+		// gateway is asked.
+		const local = await startGateway(false);
+		try {
+			local.routes.set(`/ipfs/${set}${query}`, body);
+			redirect(local.url, `/ipfs/${set}`);
+			b.routes.set(`/ipfs/${set}${query}`, body);
+			const {lines, log} = logger();
+			const result = await fetchIpfs(`ipfs://${set}`, {
+				ipfsGateways: [a.url, b.url],
+				log,
+			});
+			expect(result.gateway).toBe(b.url);
+			expect(lines.join('\n')).toContain(
+				`rejected ${a.url}: refusing a redirect from ${a.url}/ipfs/${set}${entity} to ${local.url}/ipfs/${set}${entity}`,
+			);
+			expect(local.hits).toEqual([]);
+		} finally {
+			await local.close();
+		}
 	});
 
 	it('goes through the caller proxy only (CONNECT), for every gateway it asks', async () => {
@@ -608,9 +696,27 @@ describe('parseIpfsUrl', () => {
 		}
 	});
 
-	it('defaults to documented public trustless gateways, https only', () => {
-		expect(DEFAULT_IPFS_GATEWAYS.length).toBeGreaterThan(0);
+	it('defaults to at least three public trustless gateways, https only, on independent operators', () => {
+		// Each default's operator (every host of one backend under one name:
+		// ipfs.io, dweb.link and w3s.link are the IPFS Foundation's, like
+		// trustless-gateway.link). A new default must be added here.
+		const operators: Record<string, string> = {
+			'trustless-gateway.link': 'IPFS Foundation',
+			'ipfs.io': 'IPFS Foundation',
+			'dweb.link': 'IPFS Foundation',
+			'w3s.link': 'IPFS Foundation',
+			'gateway.pinata.cloud': 'Pinata',
+			'ipfs.filebase.io': 'Filebase',
+			'4everland.io': '4EVERLAND',
+			'ipfs.4everland.io': '4EVERLAND',
+		};
+		expect(DEFAULT_IPFS_GATEWAYS.length).toBeGreaterThanOrEqual(3);
 		for (const gateway of DEFAULT_IPFS_GATEWAYS)
 			expect(gateway).toMatch(/^https:\/\/[^/]+$/);
+		const owners = DEFAULT_IPFS_GATEWAYS.map(
+			(gateway) => operators[new URL(gateway).hostname],
+		);
+		expect(owners).not.toContain(undefined);
+		expect(new Set(owners).size).toBe(owners.length);
 	});
 });
