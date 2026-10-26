@@ -64,6 +64,10 @@ _Avoid_: OPTIONS check, CORS probe
 How a `fetch` or `script` request relates to the page it comes from (its referer): `same-origin`, `same-site` (same scheme and registrable domain, any port) or `cross-site`, Chrome's `sec-fetch-site`. Derived from the URLs by a small built-in site rule (no public suffix list), overridable per request with `fetchSite`; it also decides the referer (the page's origin only, when not same-origin), `origin`, `sec-fetch-storage-access` and the cookies sent (a cross-site request gets only the `SameSite=None` ones).
 _Avoid_: request site, origin type
 
+**Potentially trustworthy**:
+A request URL Chrome sends its secure-context headers to (client hints, `sec-fetch-*`, `br`/`zstd`): every `https://` URL, and an `http://` URL to a loopback host (`localhost`, `*.localhost`, `127.0.0.0/8`, `[::1]`); the W3C Secure Contexts term. Any other `http://` URL gets the plain-http table, and a `fetch` or `script` to it from an `https` page is mixed content, refused as Chrome blocks it. Every `http://` request is HTTP/1.1, with Chrome's HTTP/1.1 header spelling.
+_Avoid_: secure target, insecure origin
+
 **Strict mode**:
 The default check that refuses to send any request unless libcurl-impersonate is loaded and accepts the impersonation target.
 _Avoid_: safe mode

@@ -11,7 +11,10 @@
 // work/notes/findings/post-requests.md (2026-09-29). Author headers on a
 // `fetch` (placement, and the preflight they cause):
 // work/notes/findings/fetch-author-headers.md (2026-09-30), rules in
-// author-headers.ts. Not measured, so not offered: navigations to another
+// author-headers.ts. Plain `http://` targets (no secure-context headers,
+// HTTP/1.1 casing, mixed content refused, the referer downgrade):
+// work/notes/findings/http-target-headers.md (2026-10-26), see
+// `targetTable`. Not measured, so not offered: navigations to another
 // origin, navigation (form) POST, non-English `accept-language`, author-header
 // name sets other than the measured ones.
 
@@ -74,6 +77,8 @@ const SEC_CH_UA = secChUa(CHROME_MAJOR);
 const NAV_ACCEPT =
 	'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7';
 const ACCEPT_ENCODING = 'gzip, deflate, br, zstd';
+/** `accept-encoding` to a target that is not potentially trustworthy. */
+const INSECURE_ACCEPT_ENCODING = 'gzip, deflate';
 const ACCEPT_LANGUAGE = 'en-US,en;q=0.9';
 
 /** A header table: ordered `[name, value]` pairs, sent exactly as listed. */
@@ -158,6 +163,114 @@ export function fetchSite(url: string | URL, referer: string | URL): FetchSite {
 	return 'cross-site';
 }
 
+/**
+ * Whether Chrome treats `url` as potentially trustworthy (W3C Secure
+ * Contexts), and so sends it the secure-context headers (`sec-fetch-*`, the
+ * client hints, `br` and `zstd` in `accept-encoding`): every `https:` URL,
+ * and an `http:` URL to a loopback host, that is `localhost`, a name ending
+ * in `.localhost`, an IPv4 address in 127.0.0.0/8 or `[::1]` (Chromium's
+ * `net::HostStringIsLocalhost`; measured for `localhost`, `foo.localhost`,
+ * `127.0.0.1` and `127.0.0.2`, see work/notes/findings/http-target-headers.md).
+ * Any other `http:` URL is not.
+ */
+export function isPotentiallyTrustworthy(url: string | URL): boolean {
+	const target = new URL(url);
+	if (target.protocol === 'https:') return true;
+	if (target.protocol !== 'http:') return false;
+	const host = target.hostname.toLowerCase().replace(/\.$/, '');
+	return (
+		host === 'localhost' ||
+		host.endsWith('.localhost') ||
+		host === '[::1]' ||
+		/^127\.\d+\.\d+\.\d+$/.test(host)
+	);
+}
+
+/**
+ * The secure table turned into the one Chrome sends to `target`, and the
+ * wire spelling libcurl must be given for it. A target that is not
+ * potentially trustworthy (`isPotentiallyTrustworthy`) gets no client hints,
+ * no `sec-fetch-*` (`keepFetchMode` keeps `sec-fetch-mode`, which a preflight
+ * still carries) and `accept-encoding: gzip, deflate`. An `http:` target is
+ * HTTP/1.1 (Chrome has no cleartext HTTP/2): `connection: keep-alive` first,
+ * no `priority`, and names spelled as Chrome spells them there: each
+ * hyphen-separated word capitalized (`User-Agent`, `Sec-Fetch-Site`), except
+ * the client hints, which stay lowercase (`sec-ch-ua`); `content-type` is
+ * `Content-Type`, and author headers keep the spelling the recipe gave them
+ * (`names`), as Chrome keeps the spelling a page's script gave them. `Host`
+ * is not in the table: libcurl sends it first, where Chrome does.
+ * Source: work/notes/findings/http-target-headers.md.
+ */
+function targetTable(
+	table: HeaderTable,
+	target: URL | undefined,
+	options: {keepFetchMode?: boolean; names?: Map<string, string>} = {},
+): HeaderTable {
+	if (target === undefined || target.protocol !== 'http:') return table;
+	const secure = isPotentiallyTrustworthy(target);
+	const out: HeaderTable = [['connection', 'keep-alive']];
+	for (const [name, value] of table) {
+		if (name === 'priority') continue;
+		if (!secure) {
+			if (name.startsWith('sec-ch-')) continue;
+			if (
+				name.startsWith('sec-fetch-') &&
+				!(options.keepFetchMode && name === 'sec-fetch-mode')
+			)
+				continue;
+		}
+		out.push([
+			name,
+			name === 'accept-encoding' && !secure ? INSECURE_ACCEPT_ENCODING : value,
+		]);
+	}
+	return out.map(([name, value]) => [
+		options.names?.get(name) ??
+			(name.startsWith('sec-ch-')
+				? name
+				: name.replace(
+						/(^|-)([a-z])/g,
+						(_, dash, c) => dash + c.toUpperCase(),
+					)),
+		value,
+	]);
+}
+
+/**
+ * The page and target of a page-initiated request, checked against Chrome's
+ * mixed-content blocking: a `fetch` or `script` from an `https:` page to an
+ * `http:` URL that is not potentially trustworthy is never sent by Chrome, so
+ * it is a `recipe` error here. `downgrade` is an `https:` page loading an
+ * `http:` URL (a loopback one, the only kind not blocked): Chrome's default
+ * referrer policy (`strict-origin-when-cross-origin`) then sends no
+ * `referer`. A referer that does not parse (allowed with `fetchSite`) or a
+ * missing `url` is neither.
+ */
+function schemes(
+	kind: RequestKind,
+	context: {referer?: string; url?: string | URL},
+): {target: URL | undefined; downgrade: boolean} {
+	const target = context.url === undefined ? undefined : new URL(context.url);
+	let page: URL | undefined;
+	try {
+		page = context.referer === undefined ? undefined : new URL(context.referer);
+	} catch {
+		page = undefined;
+	}
+	const downgrade = page?.protocol === 'https:' && target?.protocol === 'http:';
+	if (
+		downgrade &&
+		(kind === 'fetch' || kind === 'script') &&
+		!isPotentiallyTrustworthy(target!)
+	) {
+		throw new SearchcastError(
+			'recipe',
+			`a ${kind} request from an https page (${page!.origin}) to ${target!.origin} is mixed content, which Chrome blocks: it is not sent`,
+		);
+	}
+	return {target, downgrade};
+}
+
 function pageUrl(kind: RequestKind, referer: string): URL {
 	try {
 		return new URL(referer);
@@ -222,6 +335,12 @@ function siteOf(
  * lowercased, sorted and comma-joined without spaces (`api-key,content-type`).
  * `method` defaults to POST when `contentType` is given, else GET. Sources:
  * work/notes/findings/post-requests.md and fetch-author-headers.md.
+ *
+ * To an `http:` `url` (see `targetTable`): HTTP/1.1 spelling, no `priority`,
+ * and, unless the target is potentially trustworthy, no `sec-fetch-site` or
+ * `sec-fetch-dest` (`sec-fetch-mode: cors` stays) and `accept-encoding:
+ * gzip, deflate`; from an `https:` page, no `referer`
+ * (work/notes/findings/http-target-headers.md).
  */
 export function preflightTable(context: {
 	referer: string;
@@ -246,21 +365,26 @@ export function preflightTable(context: {
 	if (names.length === 0) return undefined;
 	const site = siteOf('fetch', context);
 	if (site === 'same-origin') return undefined;
+	const {target, downgrade} = schemes('fetch', context);
 	const origin = pageUrl('fetch', context.referer).origin;
-	return [
-		['accept', '*/*'],
-		['access-control-request-method', method],
-		['access-control-request-headers', names.sort().join(',')],
-		['origin', origin],
-		['user-agent', UA],
-		['sec-fetch-mode', 'cors'],
-		['sec-fetch-site', site],
-		['sec-fetch-dest', 'empty'],
-		['referer', `${origin}/`],
-		['accept-encoding', ACCEPT_ENCODING],
-		['accept-language', ACCEPT_LANGUAGE],
-		['priority', 'u=1, i'],
-	];
+	return targetTable(
+		[
+			['accept', '*/*'],
+			['access-control-request-method', method],
+			['access-control-request-headers', names.sort().join(',')],
+			['origin', origin],
+			['user-agent', UA],
+			['sec-fetch-mode', 'cors'],
+			['sec-fetch-site', site],
+			['sec-fetch-dest', 'empty'],
+			...(downgrade ? [] : [['referer', `${origin}/`] as [string, string]]),
+			['accept-encoding', ACCEPT_ENCODING],
+			['accept-language', ACCEPT_LANGUAGE],
+			['priority', 'u=1, i'],
+		],
+		target,
+		{keepFetchMode: true},
+	);
 }
 
 /**
@@ -286,6 +410,18 @@ export function preflightTable(context: {
  * placed as Chrome places them by `authorHeaders` (author-headers.ts): each
  * supported set right after `sec-ch-ua-platform`, lowercased
  * (work/notes/findings/fetch-author-headers.md).
+ *
+ * An `http:` `url` gets the table Chrome sends there
+ * (work/notes/findings/http-target-headers.md): HTTP/1.1, so
+ * `connection: keep-alive` first, no `priority` and Chrome's HTTP/1.1
+ * spelling of every name (see `targetTable`); and when the target is not
+ * potentially trustworthy (`isPotentiallyTrustworthy`: not a loopback host),
+ * no client hints, no `sec-fetch-*`, `accept-encoding: gzip, deflate`, and
+ * author headers right before `accept`. A `fetch` or `script` from an
+ * `https:` page to such a URL is mixed content, which Chrome blocks: a
+ * `recipe` error. From an `https:` page to a loopback `http:` URL there is
+ * no `referer` (the default policy's downgrade rule). Without `url`, the
+ * target is taken to be `https:`.
  */
 export function headerTable(
 	kind: RequestKind,
@@ -309,6 +445,8 @@ export function headerTable(
 	const {referer, cookie} = context;
 	const post = context.method === 'POST';
 	const author = authorHeaders(kind, context.headers);
+	const {target, downgrade} = schemes(kind, context);
+	const secure = target === undefined || isPotentiallyTrustworthy(target);
 	if (post && kind !== 'fetch') {
 		throw new SearchcastError(
 			'recipe',
@@ -338,22 +476,25 @@ export function headerTable(
 		...(priority ? [['priority', priority] as [string, string]] : []),
 	];
 	if (kind === 'document' || kind === 'same-origin-navigation') {
-		return [
-			['sec-ch-ua', SEC_CH_UA],
-			['sec-ch-ua-mobile', '?0'],
-			['sec-ch-ua-platform', '"Linux"'],
-			['upgrade-insecure-requests', '1'],
-			['user-agent', UA],
-			['accept', NAV_ACCEPT],
-			['sec-fetch-site', kind === 'document' ? 'none' : 'same-origin'],
-			['sec-fetch-mode', 'navigate'],
-			['sec-fetch-user', '?1'],
-			['sec-fetch-dest', 'document'],
-			...(kind === 'document'
-				? []
-				: [['referer', referer!] as [string, string]]),
-			...tail('u=0, i'),
-		];
+		return targetTable(
+			[
+				['sec-ch-ua', SEC_CH_UA],
+				['sec-ch-ua-mobile', '?0'],
+				['sec-ch-ua-platform', '"Linux"'],
+				['upgrade-insecure-requests', '1'],
+				['user-agent', UA],
+				['accept', NAV_ACCEPT],
+				['sec-fetch-site', kind === 'document' ? 'none' : 'same-origin'],
+				['sec-fetch-mode', 'navigate'],
+				['sec-fetch-user', '?1'],
+				['sec-fetch-dest', 'document'],
+				...(kind === 'document' || downgrade
+					? []
+					: [['referer', referer!] as [string, string]]),
+				...tail('u=0, i'),
+			],
+			target,
+		);
 	}
 	const site = siteOf(kind, {...context, referer: referer!});
 	const origin = site === 'same-origin' ? '' : pageUrl(kind, referer!).origin;
@@ -389,12 +530,27 @@ export function headerTable(
 		...(site === 'cross-site'
 			? [['sec-fetch-storage-access', 'active'] as [string, string]]
 			: []),
-		['referer', origin ? `${origin}/` : referer!],
+		...(downgrade
+			? []
+			: [['referer', origin ? `${origin}/` : referer!] as [string, string]]),
 		...tail(kind === 'fetch' ? 'u=1, i' : undefined),
 	];
 	if (author) {
-		const slot = authorHeaderSlot(author);
-		table.splice(table.findIndex(([name]) => name === slot) + 1, 0, ...author);
+		// Not potentially trustworthy: no client hints in Chrome's hash order,
+		// and the measured sets land right before `accept` (after any
+		// `content-type`).
+		const at = secure
+			? table.findIndex(([name]) => name === authorHeaderSlot(author)) + 1
+			: table.findIndex(([name]) => name === 'accept');
+		table.splice(at, 0, ...author);
 	}
-	return table;
+	return targetTable(table, target, {names: spellings(context.headers)});
+}
+
+/** Each author header's lowercase name to the spelling the recipe gave it first. */
+function spellings(headers: AuthorHeaders | undefined): Map<string, string> {
+	const names = new Map<string, string>();
+	for (const name of Object.keys(headers ?? {}))
+		if (!names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+	return names;
 }
