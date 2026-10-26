@@ -47,6 +47,13 @@
 // the request, as in the browser. Decisions:
 // work/notes/observations/2026-09-29-post-requests-decisions.md and
 // 2026-09-30-fetch-author-headers-decisions.md.
+//
+// Cookies: a cross-site request (its `sec-fetch-site` is `cross-site`) is
+// sent only the session's `SameSite=None` cookies, as Chrome (cookies.ts).
+// `document` (a typed navigation, `sec-fetch-site: none`) and
+// `same-origin-navigation` are never cross-site, so they send every matching
+// cookie, `Strict` ones included. Decisions:
+// work/notes/observations/2026-10-26-cookies-respect-samesite-decisions.md.
 
 import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import type {AuthorHeaders} from './author-headers.js';
@@ -317,16 +324,31 @@ export function createTransport(options: TransportOptions = {}): Transport {
 						request,
 						options.maxRequestBodyBytes ?? MAX_REQUEST_BODY_BYTES,
 					);
-					const table = headerTable(request.kind, {
+					const context = {
 						referer: request.referer,
 						url: target,
 						fetchSite: request.fetchSite,
 						headers: request.headers,
-						cookie: jar.header(target),
 						...(post && {
-							method: 'POST',
+							method: 'POST' as const,
 							contentType: post.contentType,
 							contentLength: post.body.length,
+						}),
+					};
+					// The cookies follow the table's own `sec-fetch-site` (the
+					// same site computation, `fetchSite` override included):
+					// cross-site sends only `SameSite=None` (cookies.ts). The
+					// first call also checks the request before the jar is read.
+					const site = new Map(headerTable(request.kind, context)).get(
+						'sec-fetch-site',
+					);
+					const table = headerTable(request.kind, {
+						...context,
+						cookie: jar.header(target, Date.now(), {
+							crossSite: site === 'cross-site',
+							topLevelNavigation:
+								request.kind === 'document' ||
+								request.kind === 'same-origin-navigation',
 						}),
 					});
 					const preflight =

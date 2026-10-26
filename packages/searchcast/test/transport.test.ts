@@ -57,6 +57,14 @@ describe.skipIf(!LIB)('transport (native libcurl-impersonate)', () => {
 			if (path.startsWith('/slow')) return; // never answers
 			if (path === '/set-cookie')
 				res.setHeader('set-cookie', ['sid=abc; Path=/', 'pref=1; Path=/']);
+			if (path === '/set-samesite')
+				res.setHeader('set-cookie', [
+					'strict=1; Path=/; SameSite=Strict',
+					'lax=1; Path=/; SameSite=Lax',
+					'default=1; Path=/',
+					'none=1; Path=/; SameSite=None; Secure',
+					'insecure=1; Path=/; SameSite=None',
+				]);
 			const encoding = /^\/enc\/(\w+)/.exec(path)?.[1];
 			const body = Buffer.from('héllo wörld'.repeat(20));
 			const encoders: Record<string, (b: Buffer) => Buffer> = {
@@ -175,6 +183,81 @@ describe.skipIf(!LIB)('transport (native libcurl-impersonate)', () => {
 		const restored = transport.session(session.cookies());
 		await restored.request(url('/restored'), {kind: 'document'});
 		expect(seen.get('/restored')).toContain('cookie');
+	});
+
+	it('sends a cross-site fetch or script only the SameSite=None cookies, everything else every matching one', async () => {
+		const session = transport.session();
+		await session.request(url('/set-samesite'), {kind: 'document'});
+		expect(session.cookies().map((c) => [c.name, c.sameSite])).toEqual([
+			['strict', 'Strict'],
+			['lax', 'Lax'],
+			['default', 'Lax'],
+			['none', 'None'],
+		]);
+		const header = (path: string, name: string) => {
+			const headers = seen.get(path)!;
+			const i = headers.indexOf(name);
+			return i < 0 ? undefined : headers[i + 1];
+		};
+		const cookieOf = (path: string) => header(path, 'cookie');
+		const all = 'strict=1; lax=1; default=1; none=1';
+		const crossPage = 'https://www.example.test/page';
+		const samePage = 'https://localhost:1/page'; // another port: same-site
+		const cases: [string, RequestOptions, string | undefined][] = [
+			['/ss/doc', {kind: 'document'}, all],
+			['/ss/nav', {kind: 'same-origin-navigation', referer: url('/page')}, all],
+			['/ss/fetch-origin', {kind: 'fetch', referer: url('/page')}, all],
+			['/ss/fetch-site', {kind: 'fetch', referer: samePage}, all],
+			['/ss/script-site', {kind: 'script', referer: samePage}, all],
+			['/ss/fetch-cross', {kind: 'fetch', referer: crossPage}, 'none=1'],
+			['/ss/script-cross', {kind: 'script', referer: crossPage}, 'none=1'],
+			[
+				'/ss/post-cross',
+				{kind: 'fetch', referer: crossPage, method: 'POST', body: 'x'},
+				'none=1',
+			],
+			[
+				'/ss/override-cross',
+				{kind: 'script', referer: url('/page'), fetchSite: 'cross-site'},
+				'none=1',
+			],
+			[
+				'/ss/override-site',
+				{kind: 'fetch', referer: crossPage, fetchSite: 'same-site'},
+				all,
+			],
+		];
+		for (const [path, options] of cases)
+			await session.request(url(path), options);
+		expect(cases.map(([path]) => [path, cookieOf(path)])).toEqual(
+			cases.map(([path, , cookie]) => [path, cookie]),
+		);
+		expect(header('/ss/fetch-cross', 'sec-fetch-site')).toBe('cross-site');
+		expect(header('/ss/fetch-site', 'sec-fetch-site')).toBe('same-site');
+	});
+
+	it('restores a cookie saved without sameSite as Lax: not sent cross-site', async () => {
+		const host = new URL(url('/')).hostname;
+		const session = transport.session([
+			{
+				name: 'old',
+				value: '1',
+				domain: host,
+				hostOnly: true,
+				path: '/',
+				secure: true,
+				httpOnly: false,
+				created: Date.now(),
+			},
+		]);
+		await session.request(url('/old/cross'), {
+			kind: 'fetch',
+			referer: 'https://www.example.test/page',
+		});
+		await session.request(url('/old/doc'), {kind: 'document'});
+		expect(seen.get('/old/cross')).not.toContain('cookie');
+		expect(seen.get('/old/doc')).toContain('cookie');
+		expect(session.cookies()[0]!.sameSite).toBe('Lax');
 	});
 
 	it.each(['gzip', 'deflate', 'br', 'zstd'])(

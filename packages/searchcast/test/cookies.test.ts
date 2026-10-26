@@ -16,6 +16,7 @@ describe('parseSetCookie', () => {
 			secure: false,
 			httpOnly: false,
 			created: NOW,
+			sameSite: 'Lax',
 		});
 	});
 
@@ -31,6 +32,7 @@ describe('parseSetCookie', () => {
 			path: '/',
 			secure: true,
 			httpOnly: true,
+			sameSite: 'Lax',
 		});
 		expect(c!.expires).toBe(NOW + 60_000);
 	});
@@ -112,6 +114,79 @@ describe('CookieStore', () => {
 	});
 });
 
+describe('SameSite', () => {
+	const cdn = new URL('https://cdn.other.test/x.js');
+	const cross = {crossSite: true};
+	const crossNavigation = {crossSite: true, topLevelNavigation: true};
+
+	it('stores Strict, Lax and None (any case); absent or unknown is Lax', () => {
+		const sameSite = (attrs: string) =>
+			parseSetCookie(`a=1; Secure${attrs}`, site, NOW)?.sameSite;
+		expect(sameSite('; SameSite=Strict')).toBe('Strict');
+		expect(sameSite('; samesite=lax')).toBe('Lax');
+		expect(sameSite('; SameSite=NONE')).toBe('None');
+		expect(sameSite('')).toBe('Lax');
+		expect(sameSite('; SameSite=Bogus')).toBe('Lax');
+		expect(sameSite('; SameSite')).toBe('Lax');
+	});
+
+	it('rejects SameSite=None without Secure, from a response and from a script', () => {
+		expect(parseSetCookie('a=1; SameSite=None', site, NOW)).toBeUndefined();
+		const jar = new CookieStore();
+		jar.store(site, ['a=1; Path=/; SameSite=None'], NOW);
+		expect(jar.setFromScript(site, 'b=1; Path=/; SameSite=None', NOW)).toBe(
+			false,
+		);
+		expect(jar.list(NOW)).toEqual([]);
+	});
+
+	it('sends a cross-site request only the None cookies; a top-level navigation also the Lax ones; never Strict', () => {
+		const jar = new CookieStore();
+		jar.store(
+			cdn,
+			[
+				'strict=1; Path=/; SameSite=Strict',
+				'lax=1; Path=/; SameSite=Lax',
+				'default=1; Path=/',
+				'none=1; Path=/; SameSite=None; Secure',
+			],
+			NOW,
+		);
+		expect(jar.header(cdn, NOW)).toBe('strict=1; lax=1; default=1; none=1');
+		expect(jar.header(cdn, NOW, {crossSite: false})).toBe(
+			'strict=1; lax=1; default=1; none=1',
+		);
+		expect(jar.header(cdn, NOW, cross)).toBe('none=1');
+		expect(jar.header(cdn, NOW, crossNavigation)).toBe(
+			'lax=1; default=1; none=1',
+		);
+	});
+
+	it('undefined when no cookie may go cross-site', () => {
+		const jar = new CookieStore();
+		jar.store(cdn, ['lax=1; Path=/'], NOW);
+		expect(jar.header(cdn, NOW, cross)).toBeUndefined();
+	});
+
+	it('loads a cookie saved without the field as Lax', () => {
+		const saved = {
+			name: 'old',
+			value: '1',
+			domain: 'cdn.other.test',
+			hostOnly: true,
+			path: '/',
+			secure: true,
+			httpOnly: false,
+			created: NOW,
+		};
+		const jar = new CookieStore([saved]);
+		expect(jar.list(NOW)).toEqual([{...saved, sameSite: 'Lax'}]);
+		expect(jar.header(cdn, NOW, cross)).toBeUndefined();
+		expect(jar.header(cdn, NOW, crossNavigation)).toBe('old=1');
+		expect(jar.header(cdn, NOW)).toBe('old=1');
+	});
+});
+
 describe('CookieStore: document.cookie (a script at the page URL)', () => {
 	it('applies the string as a Set-Cookie from the page, ignoring HttpOnly', () => {
 		const jar = new CookieStore();
@@ -128,6 +203,7 @@ describe('CookieStore: document.cookie (a script at the page URL)', () => {
 				secure: false,
 				httpOnly: false,
 				created: NOW,
+				sameSite: 'Lax',
 			},
 		]);
 		expect(

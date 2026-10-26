@@ -191,6 +191,7 @@ function sameCookies(
 						c.secure,
 						c.httpOnly,
 						c.expires ?? null,
+						c.sameSite ?? 'Lax',
 					]),
 				)
 				.sort(),
