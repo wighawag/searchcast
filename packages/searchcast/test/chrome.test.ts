@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
 	fetchSite,
+	isPotentiallyTrustworthy,
 	isSafelistedContentType,
 	preflightTable,
 	registrableDomain,
@@ -538,5 +539,206 @@ describe('POST fetch tables and preflights (the finding post-requests)', () => {
 		expect(isSafelistedContentType(`text/plain;${'x'.repeat(120)}`)).toBe(
 			false,
 		);
+	});
+});
+
+describe('http:// targets (the finding http-target-headers)', () => {
+	const PAGE = 'http://www.example.test/page?q=x';
+	const URL_ = 'http://www.example.test/api';
+
+	it('isPotentiallyTrustworthy: https, and http to a loopback host only', () => {
+		for (const url of [
+			'https://www.example.test/',
+			'http://localhost:8080/',
+			'http://LOCALHOST./',
+			'http://foo.localhost/',
+			'http://127.0.0.1/',
+			'http://127.0.0.2:1/',
+			'http://[::1]/',
+		])
+			expect([url, isPotentiallyTrustworthy(url)]).toEqual([url, true]);
+		for (const url of [
+			'http://www.example.test/',
+			'http://localhost.example.test/',
+			'http://128.0.0.1/',
+			'http://10.0.0.1/',
+			'http://[::2]/',
+		])
+			expect([url, isPotentiallyTrustworthy(url)]).toEqual([url, false]);
+	});
+
+	it('document and same-origin-navigation: no client hints, no sec-fetch-*, no priority; HTTP/1.1 spelling', () => {
+		const nav = [
+			['Connection', 'keep-alive'],
+			['Upgrade-Insecure-Requests', '1'],
+			['User-Agent', UA],
+			['Accept', NAV_ACCEPT],
+		];
+		const tail = [
+			['Accept-Encoding', 'gzip, deflate'],
+			['Accept-Language', 'en-US,en;q=0.9'],
+		];
+		expect(headerTable('document', {url: URL_})).toEqual([...nav, ...tail]);
+		expect(
+			headerTable('same-origin-navigation', {
+				referer: PAGE,
+				url: URL_,
+				cookie: 'a=1',
+			}),
+		).toEqual([...nav, ['Referer', PAGE], ...tail, ['Cookie', 'a=1']]);
+	});
+
+	it('fetch and script, same-origin and not: origin and referer as on https, nothing else', () => {
+		for (const kind of ['fetch', 'script'] as const) {
+			expect(headerTable(kind, {referer: PAGE, url: URL_})).toEqual([
+				['Connection', 'keep-alive'],
+				['User-Agent', UA],
+				['Accept', '*/*'],
+				['Referer', PAGE],
+				['Accept-Encoding', 'gzip, deflate'],
+				['Accept-Language', 'en-US,en;q=0.9'],
+			]);
+			expect(
+				headerTable(kind, {referer: PAGE, url: 'http://www.example.net/x'}),
+			).toEqual([
+				['Connection', 'keep-alive'],
+				['User-Agent', UA],
+				['Accept', '*/*'],
+				...(kind === 'fetch' ? [['Origin', 'http://www.example.test']] : []),
+				['Referer', 'http://www.example.test/'],
+				['Accept-Encoding', 'gzip, deflate'],
+				['Accept-Language', 'en-US,en;q=0.9'],
+			]);
+		}
+	});
+
+	it('POST: content-length first, author headers right before accept in the spelling given', () => {
+		expect(
+			headerTable('fetch', {
+				referer: PAGE,
+				url: URL_,
+				method: 'POST',
+				contentType: 'application/json',
+				contentLength: 2,
+				headers: {'API-Key': 'k'},
+			}),
+		).toEqual([
+			['Connection', 'keep-alive'],
+			['Content-Length', '2'],
+			['User-Agent', UA],
+			['Content-Type', 'application/json'],
+			['API-Key', 'k'],
+			['Accept', '*/*'],
+			['Origin', 'http://www.example.test'],
+			['Referer', PAGE],
+			['Accept-Encoding', 'gzip, deflate'],
+			['Accept-Language', 'en-US,en;q=0.9'],
+		]);
+		expect(
+			headerTable('fetch', {
+				referer: PAGE,
+				url: URL_,
+				headers: {authorization: 'Bearer k'},
+			}).map(([name]) => name),
+		).toEqual([
+			'Connection',
+			'User-Agent',
+			'authorization',
+			'Accept',
+			'Referer',
+			'Accept-Encoding',
+			'Accept-Language',
+		]);
+	});
+
+	it('preflight: sec-fetch-mode only, no priority', () => {
+		expect(
+			preflightTable({
+				referer: 'http://www.example.net/p',
+				url: URL_,
+				contentType: 'application/json',
+			}),
+		).toEqual([
+			['Connection', 'keep-alive'],
+			['Accept', '*/*'],
+			['Access-Control-Request-Method', 'POST'],
+			['Access-Control-Request-Headers', 'content-type'],
+			['Origin', 'http://www.example.net'],
+			['User-Agent', UA],
+			['Sec-Fetch-Mode', 'cors'],
+			['Referer', 'http://www.example.net/'],
+			['Accept-Encoding', 'gzip, deflate'],
+			['Accept-Language', 'en-US,en;q=0.9'],
+		]);
+	});
+
+	it('a loopback host keeps the secure-context headers, spelled for HTTP/1.1, without priority', () => {
+		const url = 'http://127.0.0.1:8080/api';
+		const page = 'http://127.0.0.1:8080/page';
+		const secure = headerTable('fetch', {referer: page, cookie: 'a=1'});
+		expect(headerTable('fetch', {referer: page, url, cookie: 'a=1'})).toEqual([
+			['Connection', 'keep-alive'],
+			...secure
+				.filter(([name]) => name !== 'priority')
+				.map(([name, value]) => [
+					name.startsWith('sec-ch-')
+						? name
+						: name.replace(/(^|-)([a-z])/g, (m) => m.toUpperCase()),
+					value,
+				]),
+		]);
+	});
+
+	it('an https page loading a loopback http URL sends no referer (the downgrade)', () => {
+		const from = 'https://www.example.test/page';
+		const url = 'http://localhost/api';
+		for (const kind of ['fetch', 'script'] as const) {
+			const table = headerTable(kind, {referer: from, url});
+			expect(table.map(([name]) => name)).not.toContain('Referer');
+			expect(new Map(table).get('Sec-Fetch-Site')).toBe('cross-site');
+		}
+		expect(
+			preflightTable({referer: from, url, headers: {'api-key': 'k'}})!.map(
+				([name]) => name,
+			),
+		).not.toContain('Referer');
+	});
+
+	it('refuses a fetch or script from an https page to any other http URL: mixed content (recipe error)', () => {
+		const from = 'https://www.example.test/page';
+		for (const kind of ['fetch', 'script'] as const) {
+			expect(() => headerTable(kind, {referer: from, url: URL_})).toThrowError(
+				expect.objectContaining({
+					kind: 'recipe',
+					message: expect.stringContaining('mixed content'),
+				}),
+			);
+		}
+		expect(() =>
+			preflightTable({
+				referer: from,
+				url: URL_,
+				contentType: 'application/json',
+			}),
+		).toThrowError(expect.objectContaining({kind: 'recipe'}));
+	});
+
+	it('https targets are unchanged: an https url gives the table of no url', () => {
+		for (const kind of [
+			'document',
+			'same-origin-navigation',
+			'fetch',
+			'script',
+		] as const) {
+			const referer = 'https://www.example.test/page';
+			expect(
+				headerTable(kind, {
+					referer: kind === 'document' ? undefined : referer,
+					url: 'https://www.example.test/x',
+				}),
+			).toEqual(
+				headerTable(kind, {referer: kind === 'document' ? undefined : referer}),
+			);
+		}
 	});
 });

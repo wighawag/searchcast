@@ -1,8 +1,10 @@
 // Local servers for the transport tests: an HTTP/2 TLS server that also keeps
-// the raw client bytes (to read the HEADERS frame flags), an HTTP CONNECT proxy
+// the raw client bytes (to read the HEADERS frame flags), a plain HTTP/1.1
+// server that keeps each request's raw header list, an HTTP CONNECT proxy
 // and a SOCKS5 proxy that record what they were asked for.
 
 import {readFileSync} from 'node:fs';
+import http from 'node:http';
 import http2 from 'node:http2';
 import net from 'node:net';
 import {Duplex} from 'node:stream';
@@ -189,8 +191,61 @@ export function startConnectProxy(): Promise<RecordingProxy> {
 	return listen(server, proxy);
 }
 
-/** A SOCKS5 proxy (no auth, CONNECT only). */
-export function startSocksProxy(): Promise<RecordingProxy> {
+export interface H1Request {
+	method: string;
+	path: string;
+	/** `HTTP/<version>` of the request line. */
+	version: string;
+	/** Header names (as spelled on the wire) and values, in wire order. */
+	raw: string[];
+}
+
+export interface H1Server {
+	port: number;
+	/** Every request received, in order. */
+	requests: H1Request[];
+	close(): Promise<void>;
+}
+
+/** A plain-HTTP (HTTP/1.1, no TLS) server that records each request's raw header list. */
+export async function startH1Server(
+	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
+): Promise<H1Server> {
+	const requests: H1Request[] = [];
+	const server = http.createServer((req, res) => {
+		requests.push({
+			method: req.method!,
+			path: req.url!,
+			version: `HTTP/${req.httpVersion}`,
+			raw: req.rawHeaders,
+		});
+		handler(req, res);
+	});
+	const sockets = new Set<net.Socket>();
+	server.on('connection', (socket) => {
+		sockets.add(socket);
+		socket.on('close', () => sockets.delete(socket));
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	return {
+		port: (server.address() as net.AddressInfo).port,
+		requests,
+		close: () =>
+			new Promise((resolve) => {
+				for (const socket of sockets) socket.destroy();
+				server.close(() => resolve());
+			}),
+	};
+}
+
+/**
+ * A SOCKS5 proxy (no auth, CONNECT only). `connectTo` sends every
+ * connection to that address whatever host was asked for, so a test can
+ * reach a local server under any host name (with `socks5h://`, no DNS).
+ */
+export function startSocksProxy(
+	options: {connectTo?: string} = {},
+): Promise<RecordingProxy> {
 	const proxy: RecordingProxy = {port: 0, requests: [], close: async () => {}};
 	const server = net.createServer((client) => {
 		let buffer = Buffer.alloc(0);
@@ -221,8 +276,11 @@ export function startSocksProxy(): Promise<RecordingProxy> {
 			stage = 2;
 			client.off('data', onData);
 			proxy.requests.push({atyp, host, port});
-			tunnel(client, atyp === 4 ? '::1' : host, port, () =>
-				client.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0])),
+			tunnel(
+				client,
+				options.connectTo ?? (atyp === 4 ? '::1' : host),
+				port,
+				() => client.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0])),
 			);
 		};
 		client.on('data', onData);

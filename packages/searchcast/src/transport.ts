@@ -48,6 +48,13 @@
 // work/notes/observations/2026-09-29-post-requests-decisions.md and
 // 2026-09-30-fetch-author-headers-decisions.md.
 //
+// Plain http: an `http://` URL is sent over HTTP/1.1 (never the `h2c`
+// upgrade libcurl would try for the impersonation target) with the table
+// Chrome sends there (chrome.ts `headerTable`): no secure-context headers
+// unless the host is a loopback one, Chrome's HTTP/1.1 header spelling, and
+// a `fetch`/`script` from an `https` page refused as mixed content.
+// Measurement: work/notes/findings/http-target-headers.md.
+//
 // Cookies: a cross-site request (its `sec-fetch-site` is `cross-site`) is
 // sent only the session's `SameSite=None` cookies, as Chrome (cookies.ts).
 // `document` (a typed navigation, `sec-fetch-site: none`) and
@@ -58,6 +65,7 @@
 import {DEFAULT_TIMEOUT_MS} from '@searchcast/recipe';
 import type {AuthorHeaders} from './author-headers.js';
 import {
+	fetchSite,
 	headerTable,
 	IMPERSONATE_TARGET,
 	preflightTable,
@@ -239,7 +247,10 @@ const OPT = {
 	PIPEWAIT: 237,
 	PROTOCOLS_STR: 10318,
 	QUICK_EXIT: 322,
+	HTTP_VERSION: 84,
 };
+/** CURL_HTTP_VERSION_1_1. */
+const HTTP_1_1 = 2;
 const E_WRITE = 23;
 const E_TIMEDOUT = 28;
 const CURLMSG_DONE = 1;
@@ -335,13 +346,16 @@ export function createTransport(options: TransportOptions = {}): Transport {
 							contentLength: post.body.length,
 						}),
 					};
-					// The cookies follow the table's own `sec-fetch-site` (the
-					// same site computation, `fetchSite` override included):
-					// cross-site sends only `SameSite=None` (cookies.ts). The
-					// first call also checks the request before the jar is read.
-					const site = new Map(headerTable(request.kind, context)).get(
-						'sec-fetch-site',
-					);
+					// The first call checks the request before the jar is read.
+					// The cookies follow the table's site (the same computation,
+					// `fetchSite` override included; computed here since a plain
+					// http target's table has no `sec-fetch-site`): cross-site
+					// sends only `SameSite=None` (cookies.ts).
+					headerTable(request.kind, context);
+					const site =
+						request.kind === 'fetch' || request.kind === 'script'
+							? (request.fetchSite ?? fetchSite(target, request.referer))
+							: 'same-origin';
 					const table = headerTable(request.kind, {
 						...context,
 						cookie: jar.header(target, Date.now(), {
@@ -368,8 +382,11 @@ export function createTransport(options: TransportOptions = {}): Transport {
 					if (preflight) {
 						const origin = new URL(request.referer!).origin;
 						const key = `${origin} ${target.href}`;
-						const names = new Map(preflight)
-							.get('access-control-request-headers')!
+						const names = preflight
+							.find(
+								([name]) =>
+									name.toLowerCase() === 'access-control-request-headers',
+							)![1]
 							.split(',');
 						const cached = preflights.get(key);
 						if (!(
@@ -494,8 +511,17 @@ async function perform(
 				`impersonating ${IMPERSONATE_TARGET} failed`,
 			);
 		}
-		for (const [name, value] of table)
-			list = curl.slistAppend(list, `${name}: ${value}`);
+		for (const [index, [name, value]] of table.entries()) {
+			// libcurl moves a custom `Connection` header to the END of an
+			// HTTP/1.1 request, and sends a custom `Host` first: so Chrome's
+			// `Host`, `Connection: keep-alive` start is sent as one custom Host
+			// line (the host is URL-parsed: no CR or LF can come from it).
+			const line =
+				index === 0 && name.toLowerCase() === 'connection'
+					? `Host: ${new URL(url).host}\r\n${name}: ${value}`
+					: `${name}: ${value}`;
+			list = curl.slistAppend(list, line);
+		}
 		if (method.method === 'POST') {
 			// libcurl's own POST headers, off: the table has content-length and
 			// (when there is one) content-type; `Name:` removes a header.
@@ -506,6 +532,11 @@ async function perform(
 		const set = (opt: number, type: unknown, value: unknown) =>
 			curl.setopt(handle, opt, type, value);
 		set(OPT.URL, 'str', url);
+		// Plain http is HTTP/1.1, as in Chrome (no cleartext HTTP/2). The
+		// impersonation target asks for HTTP/2, which libcurl tries on plain
+		// http as an `Upgrade: h2c` request (with `HTTP2-Settings` and
+		// `Connection: Upgrade, HTTP2-Settings`) that Chrome never sends.
+		if (url.startsWith('http:')) set(OPT.HTTP_VERSION, 'long', HTTP_1_1);
 		if (method.method === 'POST' && method.body.length === 0) {
 			// No body: a bodiless transfer named POST, so the HEADERS frame ends
 			// the stream (END_STREAM), as Chrome's does; libcurl's own POST

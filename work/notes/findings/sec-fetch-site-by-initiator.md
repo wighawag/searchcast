@@ -142,3 +142,5 @@ With a default `fetch()` (credentials `same-origin`), same-site and cross-site a
 ## Not measured
 
 Page-initiated NAVIGATIONS to another origin (a link to a sibling or another site), POST, a `referer` downgrade (an `https` page loading an `http` URL, where the policy sends no referer), `http` subresources in general (not a secure context: the one HTTP/1.1 request seen, the page's favicon, carried no `sec-fetch-*` and no client hints), a profile with third-party cookies blocked (where `sec-fetch-storage-access` should read differently), and a parser-blocking `<script>`.
+
+`http` targets and the referer downgrade were measured later: see [http-target-headers](http-target-headers.md).
