@@ -42,6 +42,7 @@ describe('@searchcast/recipe package', () => {
 
 	it('exports the same names from the node entry', () => {
 		expect(Object.keys(nodeEntry).sort()).toEqual([
+			'listRecipeFiles',
 			'loadRecipeFile',
 			'loadRecipes',
 		]);
