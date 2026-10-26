@@ -18,13 +18,39 @@ export function loadRecipeFile(path: string): Recipe {
 	return parseRecipe(json, basename(path, extname(path)));
 }
 
-/** Load recipes from files and directories (every `*.json` inside). */
+/**
+ * Whether a directory entry is a recipe file `loadRecipes` loads: a `*.json`
+ * that is neither hidden (a leading `.`) nor `manifest.json`.
+ *
+ * Decision (task load-recipes-skips-set-metadata, 2026-10-26): a recipe set
+ * written by `searchcast install-recipes` holds, besides its recipes, the
+ * archive's `manifest.json` and a `.source.json` recording where it came
+ * from; those are exactly the JSON files skipped here (all hidden files are
+ * skipped, as install refuses hidden files in an archive, so in a set only
+ * its own `.source.json` can be one). Any other `*.json` is still parsed and
+ * fails if it is not a recipe. A file named explicitly in `paths` is loaded
+ * whatever its name. Alternative: skip every JSON that does not parse as a
+ * recipe, which would hide a broken recipe instead of reporting it.
+ */
+function isListedRecipeFile(entry: string): boolean {
+	return (
+		entry.endsWith('.json') &&
+		!entry.startsWith('.') &&
+		entry !== 'manifest.json'
+	);
+}
+
+/**
+ * Load recipes from files and directories. A directory contributes every
+ * `*.json` inside except hidden files and `manifest.json` (an installed recipe
+ * set's metadata); a file given by path is always loaded.
+ */
 export function loadRecipes(paths: string[]): Map<string, Recipe> {
 	const files: string[] = [];
 	for (const p of paths) {
 		if (statSync(p).isDirectory()) {
 			for (const entry of readdirSync(p).sort()) {
-				if (entry.endsWith('.json')) files.push(join(p, entry));
+				if (isListedRecipeFile(entry)) files.push(join(p, entry));
 			}
 		} else {
 			files.push(p);
