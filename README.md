@@ -541,7 +541,7 @@ The browser runs headful by default. On a server without a display, pass `--xvfb
 
 | Option                  | Default                                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `--recipes <file\|dir>` | required for `serve`, repeatable; each `*.json` in a directory is one recipe                       |
+| `--recipes <file\|dir>` | required for `serve`, repeatable; each `*.json` in a directory is one recipe (hidden files and `manifest.json` skipped) |
 | `--recipe <file>`       | required for `browser-query`                                                                       |
 | `--listen <where>`      | `127.0.0.1:8931`; also `/path.sock`, or `systemd` for a socket passed by systemd socket activation |
 | `--idle-exit <seconds>` | never; exit after this long with no request in flight                                              |

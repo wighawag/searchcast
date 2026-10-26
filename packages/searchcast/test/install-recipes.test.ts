@@ -17,6 +17,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
+import {loadRecipes} from '@searchcast/recipe/node';
 import {
 	afterAll,
 	afterEach,
@@ -160,6 +161,37 @@ describe('installRecipes', () => {
 			`  manifest.json  sha256 ${sha256(manifest('my-set'))}`,
 			`  web.json  sha256 ${sha256(RECIPE)}`,
 		]);
+	});
+
+	it("installs a set that @searchcast/recipe's loadRecipes reads as just its recipes (manifest.json and .source.json skipped)", async () => {
+		const web = Buffer.from(
+			JSON.stringify({
+				name: 'web',
+				navigate: {url: 'https://example.test/?q={query}'},
+				ready: '.r',
+				results: {
+					item: '.r',
+					fields: {
+						title: {selector: 'h2'},
+						url: {selector: 'a', attr: 'href'},
+					},
+				},
+			}),
+		);
+		const archive = release(
+			{'manifest.json': manifest('my-set'), 'web.json': web},
+			'my-set-1.2.0',
+		);
+		const result = await installRecipes(file(archive), {
+			sha256: sha256(archive),
+			env,
+		});
+		expect(readdirSync(result.dir).sort()).toEqual([
+			'.source.json',
+			'manifest.json',
+			'web.json',
+		]);
+		expect([...loadRecipes([result.dir]).keys()]).toEqual(['web']);
 	});
 
 	it('installs a local file with files at the root and no manifest, named by --name', async () => {

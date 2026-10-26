@@ -43,7 +43,7 @@ The main entry also exports `Browser`, `Page` and `CdpConnection` (the DevTools 
 
 ## Recipes
 
-The recipe format and its validator are the [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe) package: see its README for every field. The same recipe file describes a site for this browser runner and for `searchcast`'s HTTP runner (which runs `navigate` recipes only; `form` recipes need a real browser). When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name.
+The recipe format and its validator are the [`@searchcast/recipe`](https://github.com/wighawag/searchcast/tree/main/packages/recipe) package: see its README for every field. The same recipe file describes a site for this browser runner and for `searchcast`'s HTTP runner (which runs `navigate` recipes only; `form` recipes need a real browser). When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name, except hidden files (a leading `.`) and `manifest.json` (a recipe set's metadata, as `searchcast install-recipes` writes it).
 
 ## The `./cli` entry
 

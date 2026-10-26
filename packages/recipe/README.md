@@ -12,7 +12,7 @@ The format is the one the browser runner introduced: every recipe it accepts is 
 
 ## Recipes
 
-A recipe is a JSON file. When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name.
+A recipe is a JSON file. When loading a directory, each `*.json` file is one recipe, named by its `name` field or else its file name, except hidden files (a leading `.`) and `manifest.json`: those are a recipe set's metadata (`searchcast install-recipes` writes a set's `manifest.json` and `.source.json` beside its recipes), so a directory installed by it loads as just its recipes. A file passed by path is always loaded, whatever its name.
 
 ```json
 {
@@ -83,8 +83,9 @@ import {loadRecipeFile, loadRecipes} from '@searchcast/recipe/node';
 // One file; the name defaults to the file name without its extension.
 const web = loadRecipeFile('./recipes/web.json');
 
-// Files and directories (every `*.json` inside, in name order), keyed by
-// recipe name. Duplicate names are a RecipeError.
+// Files and directories (every `*.json` inside, in name order, except hidden
+// files and `manifest.json`), keyed by recipe name. Duplicate names are a
+// RecipeError.
 const recipes: Map<string, Recipe> = loadRecipes(['./recipes']);
 ```
 

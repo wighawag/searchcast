@@ -118,4 +118,35 @@ describe('loadRecipes', () => {
 		writeFileSync(join(dir, 'b.json'), JSON.stringify(base));
 		expect(() => loadRecipes([dir])).toThrow(/duplicate recipe name "web"/);
 	});
+
+	it("skips a set's manifest.json and hidden files when listing a directory", () => {
+		const dir = tempDir();
+		writeFileSync(join(dir, 'web.json'), JSON.stringify(base));
+		writeFileSync(
+			join(dir, 'manifest.json'),
+			JSON.stringify({name: 'my-set', version: '1.0.0'}),
+		);
+		writeFileSync(join(dir, '.source.json'), JSON.stringify({source: 'x'}));
+		writeFileSync(join(dir, '._web.json'), 'not json');
+		expect([...loadRecipes([dir]).keys()]).toEqual(['web']);
+	});
+
+	it('still parses any other non-recipe *.json in a directory', () => {
+		const dir = tempDir();
+		writeFileSync(join(dir, 'web.json'), JSON.stringify(base));
+		writeFileSync(join(dir, 'package.json'), JSON.stringify({name: 'x'}));
+		expect(() => loadRecipes([dir])).toThrow(RecipeError);
+	});
+
+	it.each([['manifest.json'], ['.source.json'], ['.web.json']])(
+		'loads %s when passed explicitly by path',
+		(file) => {
+			const dir = tempDir();
+			const path = join(dir, file);
+			writeFileSync(path, JSON.stringify({...base, name: 'explicit'}));
+			expect([...loadRecipes([path]).keys()]).toEqual(['explicit']);
+			writeFileSync(path, JSON.stringify({name: 'my-set', version: '1.0.0'}));
+			expect(() => loadRecipes([path])).toThrow(RecipeError);
+		},
+	);
 });
