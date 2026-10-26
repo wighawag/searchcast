@@ -41,11 +41,22 @@ function isListedRecipeFile(entry: string): boolean {
 }
 
 /**
- * Load recipes from files and directories. A directory contributes every
- * `*.json` inside except hidden files and `manifest.json` (an installed recipe
- * set's metadata); a file given by path is always loaded.
+ * The recipe files `loadRecipes(paths)` loads, in the order it loads them: a
+ * file path as given, and a directory as its `*.json` entries in name order,
+ * except hidden files and `manifest.json` (an installed recipe set's
+ * metadata). Directory entries are `join(dir, entry)`. Nothing is parsed, so
+ * a caller can report each recipe's file (`loadRecipeFile` on each one gives
+ * the recipes `loadRecipes` returns). Throws like `statSync` when a path does
+ * not exist.
+ *
+ * Decision (task export-list-recipe-files, 2026-10-26): exported from this
+ * node subpath only. `@searchcast/browser` re-exports `loadRecipeFile` and
+ * `loadRecipes` but is NOT given `listRecipeFiles` here (its export list is
+ * its own API surface; add it there in a browser task if a consumer needs
+ * it). Alternative: re-export it from browser too, widening a second
+ * package's API in a recipe-only task.
  */
-export function loadRecipes(paths: string[]): Map<string, Recipe> {
+export function listRecipeFiles(paths: string[]): string[] {
 	const files: string[] = [];
 	for (const p of paths) {
 		if (statSync(p).isDirectory()) {
@@ -56,8 +67,18 @@ export function loadRecipes(paths: string[]): Map<string, Recipe> {
 			files.push(p);
 		}
 	}
+	return files;
+}
+
+/**
+ * Load recipes from files and directories: every file `listRecipeFiles(paths)`
+ * lists, keyed by recipe name. A directory contributes every `*.json` inside
+ * except hidden files and `manifest.json` (an installed recipe set's
+ * metadata); a file given by path is always loaded.
+ */
+export function loadRecipes(paths: string[]): Map<string, Recipe> {
 	const recipes = new Map<string, Recipe>();
-	for (const file of files) {
+	for (const file of listRecipeFiles(paths)) {
 		const recipe = loadRecipeFile(file);
 		if (recipes.has(recipe.name)) {
 			throw new RecipeError(`${file}: duplicate recipe name "${recipe.name}"`);

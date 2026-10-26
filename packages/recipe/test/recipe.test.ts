@@ -1,12 +1,12 @@
 // Ported from searchcast's test/recipe.test.ts: the cases and expected
 // messages are unchanged; only the imports moved (the loaders live on the
 // node subpath).
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterAll, describe, expect, it} from 'vitest';
 import {RecipeError, parseRecipe} from '../src/index.js';
-import {loadRecipes} from '../src/node.js';
+import {listRecipeFiles, loadRecipeFile, loadRecipes} from '../src/node.js';
 
 const base = {
 	name: 'web',
@@ -149,4 +149,105 @@ describe('loadRecipes', () => {
 			expect(() => loadRecipes([path])).toThrow(RecipeError);
 		},
 	);
+});
+
+describe('listRecipeFiles', () => {
+	const dirs: string[] = [];
+	const tempDir = () => {
+		const dir = mkdtempSync(join(tmpdir(), 'searchcast-recipe-files-'));
+		dirs.push(dir);
+		return dir;
+	};
+	afterAll(() => {
+		for (const dir of dirs) rmSync(dir, {recursive: true, force: true});
+	});
+
+	/** What loading the listed files one by one gives, as `loadRecipes` would. */
+	const loadListed = (paths: string[]) =>
+		new Map(
+			listRecipeFiles(paths).map((file) => {
+				const recipe = loadRecipeFile(file);
+				return [recipe.name, recipe] as const;
+			}),
+		);
+
+	/** A plain directory, an installed set with metadata, and loose files. */
+	const fixture = () => {
+		const root = tempDir();
+		const plain = join(root, 'plain');
+		mkdirSync(plain);
+		const {name, ...unnamed} = base;
+		writeFileSync(join(plain, 'zeta.json'), JSON.stringify(unnamed));
+		writeFileSync(
+			join(plain, 'alpha.json'),
+			JSON.stringify({...base, name: 'alpha'}),
+		);
+		writeFileSync(join(plain, 'notes.txt'), 'ignored');
+		const set = join(root, 'set');
+		mkdirSync(set);
+		writeFileSync(join(set, 'web.json'), JSON.stringify(base));
+		writeFileSync(
+			join(set, 'manifest.json'),
+			JSON.stringify({name: 'my-set', version: '1.0.0'}),
+		);
+		writeFileSync(join(set, '.source.json'), JSON.stringify({source: 'x'}));
+		const loose = join(root, 'loose.json');
+		writeFileSync(loose, JSON.stringify({...base, name: 'loose'}));
+		const manifest = join(root, 'manifest.json');
+		writeFileSync(manifest, JSON.stringify({...base, name: 'from-manifest'}));
+		const hidden = join(root, '.hidden.json');
+		writeFileSync(hidden, JSON.stringify({...base, name: 'from-hidden'}));
+		return {plain, set, loose, manifest, hidden};
+	};
+
+	it('lists a file as given and a directory as its sorted recipe entries', () => {
+		const {plain, set, loose} = fixture();
+		expect(listRecipeFiles([loose, plain, set])).toEqual([
+			loose,
+			join(plain, 'alpha.json'),
+			join(plain, 'zeta.json'),
+			join(set, 'web.json'),
+		]);
+	});
+
+	it('lists explicit metadata-named paths as given', () => {
+		const {manifest, hidden} = fixture();
+		expect(listRecipeFiles([manifest, hidden])).toEqual([manifest, hidden]);
+	});
+
+	it('is empty for no paths and throws for a missing one', () => {
+		expect(listRecipeFiles([])).toEqual([]);
+		expect(() => listRecipeFiles([join(tempDir(), 'missing')])).toThrow(
+			/ENOENT/,
+		);
+	});
+
+	it.each([
+		['a file', (f: ReturnType<typeof fixture>) => [f.loose]],
+		['a directory', (f: ReturnType<typeof fixture>) => [f.plain]],
+		[
+			'an installed set with metadata',
+			(f: ReturnType<typeof fixture>) => [f.set],
+		],
+		[
+			'explicit metadata paths',
+			(f: ReturnType<typeof fixture>) => [f.manifest, f.hidden],
+		],
+		[
+			'a mix of all of them',
+			(f: ReturnType<typeof fixture>) => [
+				f.set,
+				f.loose,
+				f.plain,
+				f.manifest,
+				f.hidden,
+			],
+		],
+	])('lists exactly what loadRecipes loads: %s', (_label, paths) => {
+		const p = paths(fixture());
+		const loaded = loadRecipes(p);
+		const listed = loadListed(p);
+		expect([...listed.keys()]).toEqual([...loaded.keys()]);
+		expect(listed).toEqual(loaded);
+	});
 });

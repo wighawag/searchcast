@@ -620,7 +620,7 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | module          | LOC | target |
 | --------------- | --: | -----: |
 | `packages/recipe/src/recipe.ts` | 200 | 200 |
-| `packages/recipe/src/node.ts` | 68 | 60 |
+| `packages/recipe/src/node.ts` | 89 | 60 |
 | `packages/recipe/src/index.ts` | 39 | 60 |
 
 ### `packages/searchcast` (library + CLI)
@@ -673,7 +673,7 @@ Every module stays small with one responsibility. Per-module LOC is tracked here
 | `packages/browser/src/server.ts` | 110 | - |
 | `packages/browser/src/xvfb.ts` | 142 | - |
 
-**Total own source: 9030 LOC** (every file under `packages/*/src`, excluding deps).
+**Total own source: 9051 LOC** (every file under `packages/*/src`, excluding deps).
 
 ## Develop
 

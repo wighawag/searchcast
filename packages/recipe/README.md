@@ -78,7 +78,11 @@ const recipe: Recipe = parseRecipe(JSON.parse(text), 'web');
 The main entry imports nothing from `node:*`, so it works anywhere. The file loaders are on a separate, Node-only subpath:
 
 ```ts
-import {loadRecipeFile, loadRecipes} from '@searchcast/recipe/node';
+import {
+	listRecipeFiles,
+	loadRecipeFile,
+	loadRecipes,
+} from '@searchcast/recipe/node';
 
 // One file; the name defaults to the file name without its extension.
 const web = loadRecipeFile('./recipes/web.json');
@@ -87,6 +91,12 @@ const web = loadRecipeFile('./recipes/web.json');
 // files and `manifest.json`), keyed by recipe name. Duplicate names are a
 // RecipeError.
 const recipes: Map<string, Recipe> = loadRecipes(['./recipes']);
+
+// The files loadRecipes loads, in the same order, without parsing them: a
+// file path as given, a directory as its listed entries. Loading each with
+// loadRecipeFile gives the same recipes, so a caller can report which file
+// each recipe came from.
+const files: string[] = listRecipeFiles(['./recipes']);
 ```
 
 ## License
