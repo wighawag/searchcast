@@ -1,5 +1,18 @@
 # searchcast
 
+## 0.5.0
+
+### Minor Changes
+
+- 91a5b63: The transport session's cookie store now keeps each cookie's `SameSite` (`Strict`, `Lax`, `None`; absent or unknown is Chrome's default, `Lax`) and sends a cross-site `fetch` or `script` request (its `sec-fetch-site` is `cross-site`, `fetchSite` override included) only the `SameSite=None` cookies, as Chromium was measured to do; same-origin and same-site requests and navigations still get every matching cookie. A `SameSite=None` cookie without `Secure` is rejected, from `Set-Cookie` and from `ctx.cookies.set` alike. `StoredCookie` gains `sameSite`; a cookie saved before it loads as `Lax`. `CookieStore.header(url, now, {crossSite, topLevelNavigation})` applies the rule (a cross-site top-level navigation also gets the `Lax` cookies, never the `Strict` ones), and the `SameSite` and `CookieRequestContext` types are exported.
+- 8f5dec4: Requests to plain `http://` URLs now carry the headers Chromium was measured to send there (`work/notes/findings/http-target-headers.md`) instead of the `https` tables. They go over HTTP/1.1, as Chrome's do: no `Upgrade: h2c` attempt (which the impersonation target made libcurl send), `Host` then `Connection: keep-alive` first, no `priority`, and Chrome's HTTP/1.1 spelling of each name (`User-Agent`, `Sec-Fetch-Site`, but `sec-ch-ua`; author headers keep the spelling the recipe gave them). To a host that is not a loopback one (anything but `localhost`, `*.localhost`, `127.0.0.0/8` and `[::1]`, which Chrome treats as potentially trustworthy) they carry no client hints and no `sec-fetch-*` (a CORS preflight keeps `sec-fetch-mode`), `accept-encoding: gzip, deflate`, and author headers right before `accept`. A `fetch` or `script` request from an `https` page to such a URL is mixed content, which Chrome blocks, so it is now refused with a `recipe` error before anything is sent; from an `https` page to a loopback `http` URL there is no `referer`. `https` tables are unchanged. `headerTable` and `preflightTable` give these tables when their `url` is `http://`.
+
+### Patch Changes
+
+- 1f860b3: `loadRecipes` (in `@searchcast/recipe/node`, re-exported by `@searchcast/browser`, and so `--recipes <dir>` of `serve`) now skips hidden files (a leading `.`) and `manifest.json` when it lists a directory, so a recipe set installed by `searchcast install-recipes` (which writes the set's `manifest.json` and `.source.json` beside its recipes) loads as just its recipes instead of failing on its metadata. Any other `*.json` in the directory is still parsed as a recipe, and a file passed by path is loaded whatever its name.
+- Updated dependencies [1f860b3]
+  - @searchcast/recipe@0.1.1
+
 ## 0.4.3
 
 ### Patch Changes
