@@ -1,11 +1,21 @@
 // The transport session's cookies. searchcast owns them (libcurl's cookie engine
 // is never used) so the `cookie` header lands where Chrome puts it in the
 // header table. RFC 6265 storage and matching, Chrome's send order (longest
-// path first, then oldest). SameSite is not enforced (not even stored): a
-// cross-site `fetch` or `script` (chrome.ts `fetchSite`) is sent every cookie
-// that matches its URL, where Chrome would drop those without
-// `SameSite=None`. There is no public suffix list, so a `Domain` attribute
-// must equal the host or contain a dot.
+// path first, then oldest). There is no public suffix list, so a `Domain`
+// attribute must equal the host or contain a dot.
+//
+// SameSite, as Chrome: the attribute is stored (`Strict`, `Lax`, `None`;
+// absent or unknown is Chrome's default, `Lax`; a cookie saved before the
+// field existed loads as `Lax`), and `SameSite=None` without `Secure` is
+// rejected when set. A request that is not cross-site (`header`'s `context`
+// omitted, or `crossSite: false`) is sent every matching cookie; a cross-site one only the
+// `None` ones, plus the `Lax` ones when it is a top-level navigation; a
+// `Strict` cookie never goes cross-site. Measured for cross-site `fetch` and
+// `script` (work/notes/findings/sec-fetch-site-by-initiator.md: only the
+// `SameSite=None; Secure` cookie went); the navigation rule and the defaults
+// are Chrome's documented ones. Which requests the transport calls
+// cross-site, and why Chrome's "Lax+POST" exemption is not modelled:
+// work/notes/observations/2026-10-26-cookies-respect-samesite-decisions.md.
 //
 // A page's script can also write and read the store (`document.cookie`, see
 // `DocumentCookies`): a code recipe's `ctx.cookies` (code.ts). The string is
@@ -31,6 +41,31 @@ export interface StoredCookie {
 	expires?: number;
 	/** Creation time in ms since the epoch (keeps Chrome's send order). */
 	created: number;
+	/**
+	 * The `SameSite` attribute; `Lax` when the `Set-Cookie` had none or an
+	 * unknown value (Chrome's default). Always set by the store; absent only in
+	 * a cookie saved before it was stored, which loads as `Lax`.
+	 */
+	sameSite?: SameSite;
+}
+
+/** A cookie's `SameSite` attribute, spelled as in `Set-Cookie`. */
+export type SameSite = 'Strict' | 'Lax' | 'None';
+
+const SAME_SITE: Record<string, SameSite> = {
+	strict: 'Strict',
+	lax: 'Lax',
+	none: 'None',
+};
+
+/**
+ * How a request relates to the page it comes from, for `SameSite`: whether it
+ * is cross-site (by the site computation of chrome.ts `fetchSite`, which sets
+ * `sec-fetch-site`) and whether it is a top-level navigation.
+ */
+export interface CookieRequestContext {
+	crossSite: boolean;
+	topLevelNavigation?: boolean;
 }
 
 const isIp = (host: string) => /^[\d.]+$/.test(host) || host.includes(':');
@@ -72,6 +107,7 @@ export function parseSetCookie(
 		secure: false,
 		httpOnly: false,
 		created: now,
+		sameSite: 'Lax',
 	};
 	let maxAge: number | undefined;
 	for (const attr of attrs) {
@@ -95,11 +131,14 @@ export function parseSetCookie(
 			cookie.secure = true;
 		} else if (key === 'httponly') {
 			cookie.httpOnly = true;
+		} else if (key === 'samesite') {
+			cookie.sameSite = SAME_SITE[val.toLowerCase()] ?? 'Lax';
 		}
 	}
 	if (maxAge !== undefined)
 		cookie.expires = maxAge <= 0 ? 0 : now + maxAge * 1000;
 	if (cookie.secure && url.protocol !== 'https:') return undefined;
+	if (cookie.sameSite === 'None' && !cookie.secure) return undefined;
 	if (name.startsWith('__Secure-') && !cookie.secure) return undefined;
 	if (
 		name.startsWith('__Host-') &&
@@ -122,7 +161,7 @@ export class CookieStore {
 	#cookies: StoredCookie[];
 
 	constructor(cookies: readonly StoredCookie[] = []) {
-		this.#cookies = cookies.map((c) => ({...c}));
+		this.#cookies = cookies.map((c) => ({...c, sameSite: c.sameSite ?? 'Lax'}));
 	}
 
 	/** Store the `Set-Cookie` values of a response from `url`. */
@@ -164,9 +203,22 @@ export class CookieStore {
 		this.#cookies = this.#cookies.filter((c) => !gone.has(c));
 	}
 
-	/** The `cookie` header value for a request to `url`, or undefined when none apply. */
-	header(url: URL, now = Date.now()): string | undefined {
-		return serialize(this.#sent(url, now)) || undefined;
+	/**
+	 * The `cookie` header value for a request to `url`, or undefined when none
+	 * apply. `context` says whether the request is cross-site (then `SameSite`
+	 * filters what is sent, see the module comment); omitted, it is not.
+	 */
+	header(
+		url: URL,
+		now = Date.now(),
+		context?: CookieRequestContext,
+	): string | undefined {
+		const sent = this.#sent(url, now);
+		if (!context?.crossSite) return serialize(sent) || undefined;
+		const allowed = (c: StoredCookie) =>
+			c.sameSite === 'None' ||
+			(c.sameSite !== 'Strict' && context.topLevelNavigation === true);
+		return serialize(sent.filter(allowed)) || undefined;
 	}
 
 	/** Store one parsed cookie, replacing (and keeping the creation time of) the same one; an expired one deletes it. */

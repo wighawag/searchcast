@@ -61,7 +61,7 @@ The CORS `OPTIONS` request Chrome sends before a fetch to another origin that ca
 _Avoid_: OPTIONS check, CORS probe
 
 **Fetch site**:
-How a `fetch` or `script` request relates to the page it comes from (its referer): `same-origin`, `same-site` (same scheme and registrable domain, any port) or `cross-site`, Chrome's `sec-fetch-site`. Derived from the URLs by a small built-in site rule (no public suffix list), overridable per request with `fetchSite`; it also decides the referer (the page's origin only, when not same-origin), `origin` and `sec-fetch-storage-access`.
+How a `fetch` or `script` request relates to the page it comes from (its referer): `same-origin`, `same-site` (same scheme and registrable domain, any port) or `cross-site`, Chrome's `sec-fetch-site`. Derived from the URLs by a small built-in site rule (no public suffix list), overridable per request with `fetchSite`; it also decides the referer (the page's origin only, when not same-origin), `origin`, `sec-fetch-storage-access` and the cookies sent (a cross-site request gets only the `SameSite=None` ones).
 _Avoid_: request site, origin type
 
 **Strict mode**:

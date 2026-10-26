@@ -71,7 +71,9 @@ export {
 export {
 	CookieStore,
 	documentCookies,
+	type CookieRequestContext,
 	type DocumentCookies,
+	type SameSite,
 	type StoredCookie,
 } from './cookies.js';
 import {LIBCURL_IMPERSONATE} from './libcurl.js';
