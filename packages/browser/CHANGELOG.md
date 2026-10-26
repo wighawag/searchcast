@@ -1,5 +1,12 @@
 # @searchcast/browser
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [39e9112]
+  - @searchcast/recipe@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
