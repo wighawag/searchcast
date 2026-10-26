@@ -23,6 +23,7 @@ const repo = resolve(import.meta.dirname, '..', '..', '..');
 const SCRIPTS = [
 	'copy-publish-assets.mjs',
 	'libcurl-packages.mjs',
+	'loc.mjs',
 	'no-skips.mjs',
 	'pack-check.mjs',
 	'release-plan.mjs',
@@ -93,6 +94,17 @@ describe('a root script run through a symlinked scripts/ directory', () => {
 		expect(r.output).toContain('a is at 1.0.0 in its package.json (>= 1.0.0)');
 		expect(r.status).toBe(1);
 	}, 60_000);
+
+	it('loc --check fails a stale table', () => {
+		const root = fixture('loc', {
+			'packages/a/src/x.ts': 'x\n',
+			'README.md':
+				'## Size discipline (per-module LOC)\n\n| `packages/a/src/x.ts` | 9 | 10 |\n',
+		});
+		const r = runLinked('loc.mjs', ['--check', root]);
+		expect(r.output).toContain('loc: the README LOC table is out of date');
+		expect(r.status).toBe(1);
+	});
 
 	// Its root is the repo holding the real script, so no fixture can stand in
 	// for it: an argument it must refuse shows its CLI ran, without packing.

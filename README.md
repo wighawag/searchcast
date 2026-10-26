@@ -613,53 +613,67 @@ engines:
 
 ## Size discipline (per-module LOC)
 
-Every module stays small with one responsibility. Per-module LOC is tracked here as a first-class quality signal. `target` is a rough ceiling (a ceiling, not a promise); `LOC` is the actual line count of the source file. Each task that adds or grows a module updates its row.
+Every module stays small with one responsibility. Per-module LOC is tracked here as a first-class quality signal. `target` is a rough ceiling (a ceiling, not a promise); `LOC` is the actual line count of the source file. Rows name files by their path from the repo root, and every file under `packages/*/src` has one. The LOC column and the total are generated: `pnpm loc` rewrites them (keeping the rows' order and targets, adding a row with target `-` for a new file, refusing a row whose file is gone), and the verify gate fails when they are out of date (`pnpm check:loc`, run by `pnpm test`).
 
 ### `packages/recipe` (`@searchcast/recipe`, the shared recipe schema)
 
 | module          | LOC | target |
 | --------------- | --: | -----: |
-| `src/recipe.ts` | 200 | 200 |
-| `src/node.ts` | 42 | 60 |
-| `src/index.ts` | 39 | 60 |
+| `packages/recipe/src/recipe.ts` | 200 | 200 |
+| `packages/recipe/src/node.ts` | 68 | 60 |
+| `packages/recipe/src/index.ts` | 39 | 60 |
 
 ### `packages/searchcast` (library + CLI)
 
 | module | LOC | target |
 | ------ | --: | -----: |
-| `src/code.ts` | 432 | 320 |
-| `src/download.ts` | 290 | 300 |
-| `src/ipfs.ts` | 648 | 450 |
-| `src/transport.ts` | 723 | 300 |
-| `src/libcurl.ts` | 378 | 280 |
-| `src/chain.ts` | 454 | 260 |
-| `src/browser.ts` | 237 | 250 |
-| `src/declarative.ts` | 198 | 220 |
-| `src/install.ts` | 270 | 180 |
-| `src/install-recipes.ts` | 486 | 250 |
-| `src/recipe-archive.ts` | 167 | 130 |
-| `src/recipes.ts` | 159 | 160 |
-| `src/tar.ts` | 53 | 60 |
-| `src/cookies.ts` | 245 | 170 |
-| `src/post.ts` | 165 | 160 |
-| `src/author-headers.ts` | 186 | 190 |
-| `src/searchcast-endpoint.ts` | 182 | 170 |
-| `src/doctor.ts` | 194 | 180 |
-| `src/cli.ts` | 220 | 200 |
-| `src/browser-cli.ts` | 64 | 70 |
-| `src/html.ts` | 126 | 150 |
-| `src/chrome.ts` | 400 | 150 |
-| `src/index.ts` | 168 | 160 |
-| `src/response.ts` | 98 | 120 |
-| `src/store.ts` | 63 | 80 |
-| `src/errors.ts` | 45 | 50 |
-| `src/decoy.ts` | 110 | 120 |
-| `src/options.ts` | 67 | 80 |
-| `src/install-api.ts` | 51 | 60 |
-| `src/data-dir.ts` | 95 | 100 |
-| `src/deprecated.ts` | 24 | 40 |
+| `packages/searchcast/src/code.ts` | 432 | 320 |
+| `packages/searchcast/src/download.ts` | 293 | 300 |
+| `packages/searchcast/src/ipfs.ts` | 648 | 450 |
+| `packages/searchcast/src/transport.ts` | 776 | 300 |
+| `packages/searchcast/src/libcurl.ts` | 378 | 280 |
+| `packages/searchcast/src/chain.ts` | 455 | 260 |
+| `packages/searchcast/src/browser.ts` | 237 | 250 |
+| `packages/searchcast/src/declarative.ts` | 198 | 220 |
+| `packages/searchcast/src/install.ts` | 270 | 180 |
+| `packages/searchcast/src/install-recipes.ts` | 486 | 250 |
+| `packages/searchcast/src/recipe-archive.ts` | 199 | 130 |
+| `packages/searchcast/src/recipes.ts` | 159 | 160 |
+| `packages/searchcast/src/tar.ts` | 53 | 60 |
+| `packages/searchcast/src/cookies.ts` | 297 | 170 |
+| `packages/searchcast/src/post.ts` | 165 | 160 |
+| `packages/searchcast/src/author-headers.ts` | 186 | 190 |
+| `packages/searchcast/src/searchcast-endpoint.ts` | 182 | 170 |
+| `packages/searchcast/src/doctor.ts` | 194 | 180 |
+| `packages/searchcast/src/cli.ts` | 220 | 200 |
+| `packages/searchcast/src/browser-cli.ts` | 102 | 70 |
+| `packages/searchcast/src/html.ts` | 126 | 150 |
+| `packages/searchcast/src/chrome.ts` | 556 | 150 |
+| `packages/searchcast/src/index.ts` | 170 | 160 |
+| `packages/searchcast/src/response.ts` | 98 | 120 |
+| `packages/searchcast/src/store.ts` | 63 | 80 |
+| `packages/searchcast/src/errors.ts` | 45 | 50 |
+| `packages/searchcast/src/decoy.ts` | 110 | 120 |
+| `packages/searchcast/src/options.ts` | 67 | 80 |
+| `packages/searchcast/src/install-api.ts` | 51 | 60 |
+| `packages/searchcast/src/data-dir.ts` | 95 | 100 |
+| `packages/searchcast/src/deprecated.ts` | 24 | 40 |
 
-**Total own source: 6693 LOC** (`packages/searchcast/src`) (excluding deps).
+### `packages/browser` (`@searchcast/browser`)
+
+| module | LOC | target |
+| ------ | --: | -----: |
+| `packages/browser/src/browser.ts` | 310 | - |
+| `packages/browser/src/cdp.ts` | 194 | - |
+| `packages/browser/src/cli.ts` | 243 | - |
+| `packages/browser/src/index.ts` | 21 | - |
+| `packages/browser/src/probe.ts` | 82 | - |
+| `packages/browser/src/recipe.ts` | 13 | - |
+| `packages/browser/src/searchcast.ts` | 273 | - |
+| `packages/browser/src/server.ts` | 110 | - |
+| `packages/browser/src/xvfb.ts` | 142 | - |
+
+**Total own source: 9030 LOC** (every file under `packages/*/src`, excluding deps).
 
 ## Develop
 
@@ -670,7 +684,7 @@ pnpm build
 pnpm test
 ```
 
-`pnpm format:check && pnpm build && pnpm test` is the verify gate (`dorfl.json`). Tests run against the built packages, so build before testing. Before every package's tests, `pnpm test` type-checks them (`pnpm typecheck`: each package's `tsconfig.test.json`, its `src/` and `test/` with no emit, since vitest strips types without checking them, so a failing `expectTypeOf` fails here). It also runs the two release guards: `pnpm check:release` (`scripts/release-plan.mjs`: prints the release plan of the pending changesets and fails if a package is at or planned at 1.0.0 or more, or planned for a major bump) and `pnpm check:pack` (`scripts/pack-check.mjs`: packs every publishable package with `pnpm pack --dry-run` and fails on a missing README, LICENSE or CHANGELOG, a stray file, the wrong license, an install script, or a manifest that would not publish publicly from this repo; a platform package may lack its library there, but not at release, where it runs with `--require-payloads`). CI (`.github/workflows/test.yml`, on every push and pull request) runs `pnpm test:ci`: the same, plus `scripts/no-skips.mjs`, which fails if any test was skipped.
+`pnpm format:check && pnpm build && pnpm test` is the verify gate (`dorfl.json`). Tests run against the built packages, so build before testing. Before every package's tests, `pnpm test` type-checks them (`pnpm typecheck`: each package's `tsconfig.test.json`, its `src/` and `test/` with no emit, since vitest strips types without checking them, so a failing `expectTypeOf` fails here). It first checks that the per-module LOC table above is up to date (`pnpm check:loc`, `scripts/loc.mjs --check`; `pnpm loc` regenerates it). It also runs the two release guards: `pnpm check:release` (`scripts/release-plan.mjs`: prints the release plan of the pending changesets and fails if a package is at or planned at 1.0.0 or more, or planned for a major bump) and `pnpm check:pack` (`scripts/pack-check.mjs`: packs every publishable package with `pnpm pack --dry-run` and fails on a missing README, LICENSE or CHANGELOG, a stray file, the wrong license, an install script, or a manifest that would not publish publicly from this repo; a platform package may lack its library there, but not at release, where it runs with `--require-payloads`). CI (`.github/workflows/test.yml`, on every push and pull request) runs `pnpm test:ci`: the same, plus `scripts/no-skips.mjs`, which fails if any test was skipped.
 
 The transport tests that need the native library run only when `SEARCHCAST_LIBCURL_PATH` points at a libcurl-impersonate shared library (and the plain-libcurl strict-mode tests only when `SEARCHCAST_TEST_PLAIN_LIBCURL` points at a plain libcurl); otherwise they are skipped with a message. CI installs the pinned release with `searchcast install-libcurl` itself (into a temporary data directory, checksum verified) and sets both, so they always run there. The platform-package tests (`packages/searchcast/test/platform-package-native.test.ts`) run only when this platform's `packages/libcurl-<platform>` holds its library: `node scripts/libcurl-packages.mjs build <platform>` downloads the pinned archive, verifies it and writes it there (gitignored; `pnpm build` first). CI builds `linux-x64` this way, so they run there too.
 
